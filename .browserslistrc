@@ -1,0 +1,21 @@
+# Browser support configuration for production
+# Android TV 12+ (Chrome 100+), Safari 15+, Firefox 100+, Edge 100+
+
+# Chrome (Android TV 12, Desktop, Mobile)
+Chrome >= 100
+
+# Safari (iOS 15+, macOS 12+)
+Safari >= 15
+
+# Firefox (Desktop, Mobile)
+Firefox >= 100
+
+# Edge (Windows, macOS)
+Edge >= 100
+
+# Samsung Internet (Android)
+Samsung >= 15
+
+# Opera (Desktop, Mobile)
+Opera >= 86
+

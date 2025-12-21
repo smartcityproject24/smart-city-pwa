@@ -1,0 +1,35 @@
+@mixin desktop {
+	@media (min-width: 1280px) {
+		@content;
+	}
+}
+
+@mixin tablet {
+	@media (min-width: 768px) and (max-width: 1279px) {
+		@content;
+	}
+}
+
+@mixin diagonal13 {
+	@media (min-width: 768px) and (max-width: 1350px) {
+		@content;
+	}
+}
+
+@mixin mobile {
+	@media (max-width: 767px) {
+		@content;
+	}
+}
+
+@mixin isHoverable {
+    @media (hover: hover) {
+		@content;
+	}
+}
+
+@mixin isIPhoneLanscape {
+	@media only screen and (min-width: 375px) and (max-width: 900px) and (orientation: landscape) {
+		@content;
+	}
+}

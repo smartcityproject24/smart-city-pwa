@@ -1,0 +1,101 @@
+// Цветовая палитра из Figma дизайна
+// Теплая темная тема с правильным сочетанием цветов
+
+// ============================================
+// ОСНОВНЫЕ ЦВЕТА - ИЗ FIGMA
+// ============================================
+
+// Фон - темные тона
+$color-background-primary: #161616;      // Основной темный фон
+$color-background-secondary: #1D1D1D;   // Вторичный темный фон
+$color-background-tertiary: #333333;    // Третичный фон
+$color-background-quaternary: #3D3D3D;  // Четвертичный фон для элементов
+
+// Текст - светлый на темном фоне
+$color-text-primary: #F2F2F3;           // Основной текст (очень светлый)
+$color-text-secondary: #D2D2D2;         // Вторичный текст (светло-серый)
+$color-text-tertiary: #404040;          // Третичный текст (средне-серый)
+$color-text-inverse: #FFFFFF;           // Текст на акцентных кнопках (белый)
+
+// Акцентные цвета
+$color-primary: #F34A23;                // Основной акцентный цвет (красно-оранжевый)
+$color-primary-hover: #d43a1a;          // Акцент при наведении (темнее)
+$color-primary-active: #b52e15;         // Акцент при нажатии (еще темнее)
+$color-primary-light: rgba(243, 74, 35, 0.1); // Светлый акцент для фона
+
+// Состояния
+$color-success: #16a34a;                // Зеленый для успеха
+$color-success-light: rgba(22, 163, 74, 0.1); // Светло-зеленый фон
+$color-error: #F34A23;                   // Красный для ошибок (используем акцентный)
+$color-error-light: rgba(243, 74, 35, 0.1);   // Светло-красный фон
+$color-warning: #f59e0b;                 // Оранжевый для предупреждений
+$color-warning-light: rgba(245, 158, 11, 0.1); // Светло-оранжевый фон
+$color-info: #3b82f6;                    // Синий для информации
+$color-info-light: rgba(59, 130, 246, 0.1);   // Светло-синий фон
+
+// Кнопка установки
+$color-install: #9333EA;                // Фиолетовый для кнопки установки
+$color-install-hover: #7C3AED;          // Фиолетовый при наведении (темнее)
+$color-install-active: #6D28D9;          // Фиолетовый при нажатии (еще темнее)
+
+// Границы
+$color-border: #404040;                  // Основная граница
+$color-border-hover: #3D3D3D;            // Граница при наведении
+$color-border-focus: #F34A23;            // Граница при фокусе (акцентный цвет)
+$color-border-error: #F34A23;            // Граница для ошибок
+
+// Тени
+$color-shadow-sm: rgba(0, 0, 0, 0.3);    // Маленькая тень
+$color-shadow-md: rgba(0, 0, 0, 0.4);    // Средняя тень
+$color-shadow-lg: rgba(0, 0, 0, 0.5);    // Большая тень
+
+// ============================================
+// ЭКСПОРТ ПЕРЕМЕННЫХ (для использования в компонентах)
+// ============================================
+
+:export {
+    // Фон
+    backgroundPrimary: $color-background-primary;
+    backgroundSecondary: $color-background-secondary;
+    backgroundTertiary: $color-background-tertiary;
+    backgroundQuaternary: $color-background-quaternary;
+    
+    // Текст
+    textPrimary: $color-text-primary;
+    textSecondary: $color-text-secondary;
+    textTertiary: $color-text-tertiary;
+    textInverse: $color-text-inverse;
+    
+    // Акценты
+    primary: $color-primary;
+    primaryHover: $color-primary-hover;
+    primaryActive: $color-primary-active;
+    primaryLight: $color-primary-light;
+    
+    // Состояния
+    success: $color-success;
+    successLight: $color-success-light;
+    error: $color-error;
+    errorLight: $color-error-light;
+    warning: $color-warning;
+    warningLight: $color-warning-light;
+    info: $color-info;
+    infoLight: $color-info-light;
+    
+    // Кнопка установки
+    install: $color-install;
+    installHover: $color-install-hover;
+    installActive: $color-install-active;
+    
+    // Границы
+    border: $color-border;
+    borderHover: $color-border-hover;
+    borderFocus: $color-border-focus;
+    borderError: $color-border-error;
+    
+    // Тени
+    shadowSm: $color-shadow-sm;
+    shadowMd: $color-shadow-md;
+    shadowLg: $color-shadow-lg;
+}
+

@@ -1,0 +1,101 @@
+// Унифицированная система типографики для всех экранов
+// Используются адаптивные размеры с clamp() для масштабирования от телефонов до больших экранов
+
+// ============================================
+// БАЗОВЫЕ РАЗМЕРЫ ШРИФТОВ (унифицированные)
+// ============================================
+
+// Базовый размер - для input, select, button (основной текст)
+$font-size-base: clamp(13px, 1.1vw, 17px);
+
+// Средний размер - для label, error (важные элементы)
+$font-size-medium: clamp(13px, 1.1vw, 18px);
+
+// ============================================
+// МЕЖБУКВЕННЫЕ РАССТОЯНИЯ (унифицированные)
+// ============================================
+
+// Базовое межбуквенное расстояние - для input, select, error
+$letter-spacing-base: clamp(0.2px, 0.04vw, 0.6px);
+
+// Увеличенное межбуквенное расстояние - для label, button
+$letter-spacing-medium: clamp(0.3px, 0.05vw, 0.8px);
+
+// ============================================
+// ЖИРНОСТЬ ШРИФТОВ (унифицированные)
+// ============================================
+
+$font-weight-normal: 400;  // обычный текст (select)
+$font-weight-medium: 500;  // средний (button)
+$font-weight-semibold: 600; // полужирный (label, error)
+
+// ============================================
+// МИКСИНЫ ДЛЯ ПРИМЕНЕНИЯ СТИЛЕЙ
+// ============================================
+
+// Базовый текст (input, select)
+@mixin base-text {
+    font-size: $font-size-base;
+    letter-spacing: $letter-spacing-base;
+    font-weight: $font-weight-normal;
+}
+
+// Средний текст (label, error)
+@mixin medium-text {
+    font-size: $font-size-medium;
+    letter-spacing: $letter-spacing-medium;
+    font-weight: $font-weight-semibold;
+}
+
+// Кнопка (button)
+@mixin button-text {
+    font-size: $font-size-base;
+    letter-spacing: $letter-spacing-medium;
+    font-weight: $font-weight-medium;
+}
+
+// ============================================
+// УСТАРЕВШИЕ МИКСИНЫ (для обратной совместимости)
+// ============================================
+
+@mixin label-text {
+    @include medium-text;
+}
+
+@mixin input-text {
+    @include base-text;
+}
+
+@mixin error-text {
+    @include medium-text;
+}
+
+@mixin select-text {
+    @include base-text;
+}
+
+// ============================================
+// РАЗМЕРЫ ДЛЯ БОЛЬШИХ ЭКРАНОВ (≥2000px)
+// ============================================
+
+@mixin large-screen-base {
+    font-size: clamp(14px, 1.3vw, 21px);
+}
+
+@mixin large-screen-medium {
+    font-size: clamp(17px, 1.4vw, 24px);
+}
+
+// Устаревшие миксины для обратной совместимости
+@mixin large-screen-label {
+    @include large-screen-medium;
+}
+
+@mixin large-screen-input {
+    @include large-screen-base;
+}
+
+@mixin large-screen-button {
+    @include large-screen-base;
+}
+

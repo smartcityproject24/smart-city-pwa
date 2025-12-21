@@ -1,0 +1,1 @@
+export { default as SplashLogo } from "./SplashLogo.svelte";

@@ -1,0 +1,46 @@
+{
+	"extends": "@tsconfig/svelte/tsconfig.json",
+	"compilerOptions": {
+		"tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+		"target": "ES2021",
+		"lib": ["ES2021", "DOM", "DOM.Iterable"],
+		"useDefineForClassFields": true,
+		"module": "ESNext",
+		"types": [
+			"svelte",
+			"vite/client"
+		],
+		"composite": true,
+		"emitDeclarationOnly": true,
+		/**
+     * Typecheck JS in `.svelte` and `.js` files by default.
+     * Disable checkJs if you'd like to use dynamic types in JS.
+     * Note that setting allowJs false does not prevent the use
+     * of JS in `.svelte` files.
+     */
+		"allowJs": true,
+		"checkJs": false,
+		"moduleDetection": "force",
+		"baseUrl": ".",
+        "paths": {
+			"@components": ["src/components"],
+			"@components/*": ["src/components/*"],
+            "@core": ["src/core"],
+            "@core/*": ["src/core/*"],
+            "@data": ["src/data"],
+            "@data/*": ["src/data/*"],
+            "@middleware": ["src/middleware"],
+            "@middleware/*": ["src/middleware/*"],
+            "@pages": ["src/pages"],
+            "@pages/*": ["src/pages/*"],
+			"@api": ["src/api"],
+			"@api/*": ["src/api/*"],
+            "@/*": ["src/*"]
+        }
+	},
+	"include": [
+		"src/**/*.ts",
+		"src/**/*.js",
+		"src/**/*.svelte"
+	]
+}
