@@ -30,5 +30,8 @@ export default defineConfig({
 			'@api': path.resolve(__dirname, 'src/api'),
 			'@': path.resolve(__dirname, 'src')
 		}
-	}
+	},
+    server: {
+        port: 16026
+    }
 });

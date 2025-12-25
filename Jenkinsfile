@@ -3,14 +3,14 @@ node('master') {
         def appName = "pwa"
         def addVersion = "prod"
         stage('Clean') {
-            sh "rm -rf /var/lib/jenkins/workspace/Front_Web-pwa_master/*"
+            sh "rm -rf /var/lib/jenkins/workspace/Front_Pwa_master/*"
         }
         stage('Checkout') {
             println("Checkout $appName-$addVersion")
             checkout scm
         }
         stage ('Setup service') {
-            sh "chown -R 777 /var/lib/jenkins/workspace/Front_Web-pwa_master/"
+            sh "chown -R 777 /var/lib/jenkins/workspace/Front_Pwa_master/"
             sh "npm install"
             sh "npm run build"
         }
