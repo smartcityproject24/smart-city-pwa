@@ -7,25 +7,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
 import svelteConfig from './svelte.config.js';
 import { pwaConfig } from './pwa.config.ts';
-
-// Конфигурация HTTPS
-const getHttpsConfig = () => {
-    if (!env.HTTPS_ENABLED || env.HTTPS_ENABLED === 'false') return false;
-
-    const keyPath = env.SSL_KEY_PATH || 'ssl/RGB.KG.key';
-    const certPath = env.SSL_CERT_PATH || 'ssl/RGB_KG.crt';
-
-    try {
-        return {
-            key: fs.readFileSync(path.resolve(__dirname, keyPath)),
-            cert: fs.readFileSync(path.resolve(__dirname, certPath)),
-            ca: env.SSL_CA_PATH ? fs.readFileSync(path.resolve(__dirname, env.SSL_CA_PATH)) : undefined
-        };
-    } catch (error) {
-        console.warn('HTSS certificates not found, falling back to HTTP');
-        return false;
-    }
-};
+import fs from 'fs';
 
 export default defineConfig({
 
@@ -52,11 +34,23 @@ export default defineConfig({
 		}
 	},
     server: {
-        port: 16026
+        port: 16026,
+        https: {
+            key: fs.readFileSync(path.resolve(__dirname, 'ssl/RGB.KG.key')),
+            cert: fs.readFileSync(path.resolve(__dirname, 'ssl/RGB_KG.crt'))
+        },
+        allowedHosts: [
+            'localhost',
+            '127.0.0.1',
+            'rgb.kg'
+        ]
     },
     preview: {
         port: 16026,
-        https: getHttpsConfig(),
+        https: {
+            key: fs.readFileSync(path.resolve(__dirname, 'ssl/RGB.KG.key')),
+            cert: fs.readFileSync(path.resolve(__dirname, 'ssl/RGB_KG.crt'))
+        },
         host: true,
         allowedHosts: [
             'localhost',
