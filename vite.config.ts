@@ -36,6 +36,11 @@ export default defineConfig({
     },
     preview: {
         port: 16026,
-        host: true
+        host: true,
+        allowedHosts: [
+            'localhost',
+            '127.0.0.1',
+            'rgb.kg'
+        ],
     },
 });

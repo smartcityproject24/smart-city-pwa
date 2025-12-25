@@ -13,6 +13,7 @@ node('master') {
             sh "chown -R 777 /var/lib/jenkins/workspace/Front_Pwa_master/"
             sh "npm install"
             sh "npm run build"
+            sh "chmod -R 777 /var/lib/jenkins/workspace/Front_Pwa_master/node_modules/.vite-temp 2>/dev/null || true"
         }
         stage ('Start service') {
             sh "systemctl restart smart_pwa_prod.service"
