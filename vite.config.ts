@@ -33,5 +33,9 @@ export default defineConfig({
 	},
     server: {
         port: 16026
-    }
+    },
+    preview: {
+        port: 16026,
+        host: true
+    },
 });
