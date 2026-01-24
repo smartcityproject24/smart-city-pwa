@@ -3,7 +3,11 @@ import { saveLog } from "./log-storage";
 import { sendPendingLogs, sendAllPendingLogs } from "./log-queue";
 import { isOnline, onNetworkChange } from "./network-monitor";
 import { deleteSentLogs } from "./log-storage";
-import type { LoginLogData, VideoStartLogData, VideoErrorLogData } from "./types";
+import type {
+    LoginLogData,
+    VideoStartLogData,
+    VideoErrorLogData,
+} from "./types";
 
 // Конфигурация logger (инициализируется через initLogger)
 let loggerConfig: {
@@ -34,10 +38,7 @@ export const logger = {
     /**
      * Логирует вход в систему
      */
-    async logLogin(
-        dashboardUUID: string,
-        data: LoginLogData
-    ): Promise<void> {
+    async logLogin(dashboardUUID: string, data: LoginLogData): Promise<void> {
         try {
             const timestamp = data.timestamp || new Date().toISOString();
             const logPayload = JSON.stringify({
@@ -68,7 +69,7 @@ export const logger = {
      */
     async logVideoStart(
         dashboardUUID: string,
-        data: VideoStartLogData
+        data: VideoStartLogData,
     ): Promise<void> {
         try {
             const timestamp = data.timestamp || new Date().toISOString();
@@ -95,6 +96,7 @@ export const logger = {
                     fileUUID: data.fileUUID,
                     logContentShowDate,
                     logPayload,
+                    screenUUID: data.screenUUID,
                 },
             });
 
@@ -111,7 +113,7 @@ export const logger = {
      */
     async logVideoError(
         dashboardUUID: string,
-        data: VideoErrorLogData
+        data: VideoErrorLogData,
     ): Promise<void> {
         try {
             const timestamp = data.timestamp || new Date().toISOString();
@@ -131,6 +133,7 @@ export const logger = {
                     logEventType: DashboardLogEventType.VIDEO_ERROR,
                     fileUUID: data.fileUUID,
                     logPayload,
+                    screenUUID: data.screenUUID,
                 },
             });
 
@@ -171,7 +174,7 @@ export function initLoggingAutoSend(): () => void {
             } catch (error) {
                 console.error(
                     "[Logger] Failed to send logs on network recovery:",
-                    error
+                    error,
                 );
             }
         }
@@ -184,19 +187,22 @@ export function initLoggingAutoSend(): () => void {
             } catch (error) {
                 console.error(
                     "[Logger] Failed to send logs periodically:",
-                    error
+                    error,
                 );
             }
         }
     }, loggerConfig.logSendIntervalSeconds * 1000);
 
-    const cleanupInterval = setInterval(async () => {
-        try {
-            await logger.cleanupSentLogs();
-        } catch (error) {
-            console.error("[Logger] Failed to cleanup logs:", error);
-        }
-    }, loggerConfig.sentLogsCleanupIntervalHours * 60 * 60 * 1000);
+    const cleanupInterval = setInterval(
+        async () => {
+            try {
+                await logger.cleanupSentLogs();
+            } catch (error) {
+                console.error("[Logger] Failed to cleanup logs:", error);
+            }
+        },
+        loggerConfig.sentLogsCleanupIntervalHours * 60 * 60 * 1000,
+    );
 
     return () => {
         unsubscribe();
@@ -204,4 +210,3 @@ export function initLoggingAutoSend(): () => void {
         clearInterval(cleanupInterval);
     };
 }
-
