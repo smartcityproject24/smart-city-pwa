@@ -23,6 +23,7 @@
         positionX = undefined,
         positionY = undefined,
         playlistUUID = undefined,
+        uuid = undefined,
     }: {
         blocks?: Block[];
         width?: number;
@@ -30,6 +31,7 @@
         positionX?: number;
         positionY?: number;
         playlistUUID?: string;
+        uuid?: string;
     } = $props();
 
     const { isReady } = getContext<ApiReadyContext>("api");
@@ -306,6 +308,7 @@
                     playlistUUID,
                     fileUUID: currentContent.fileUUID,
                     videoIndex: currentVideoIndex,
+                    screenUUID: uuid,
                 });
             }
         };
@@ -328,6 +331,7 @@
                     fileUUID: currentContent.fileUUID,
                     error: errorMessage,
                     errorCode: errorCode.toString(),
+                    screenUUID: uuid,
                 });
             }
         };
@@ -348,6 +352,7 @@
                     playlistUUID,
                     fileUUID: currentContent.fileUUID,
                     videoIndex: currentVideoIndex,
+                    screenUUID: uuid,
                 });
             }
         };
