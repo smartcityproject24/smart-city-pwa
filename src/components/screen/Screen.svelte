@@ -47,6 +47,11 @@
     let error = $state<ApiError | null>(null);
     let playlistCheckInterval: ReturnType<typeof setInterval> | null = null;
 
+    // Check if there are any widget blocks
+    const hasWidgets = $derived(
+        blocks.some((block) => String(block.type).toUpperCase() === "WIDGET")
+    );
+
     // TODO: Рефакторинг и удаление debug консолей
     const isPlaylistChanged = (
         oldContents: PlaylistContent[],
@@ -411,7 +416,7 @@
                 in:fade={{ delay: 500, duration: 500 }}
             ></video>
         {/key}
-    {:else}
+    {:else if !hasWidgets}
         <SplashLogo />
     {/if}
     <div>
