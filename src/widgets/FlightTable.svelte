@@ -35,13 +35,14 @@
         {#each items as item}
             {@const logoUrl = getAirlineLogo(item.Flight)}
             <tr>
-                <td style="text-align: center; padding: 4px;">
+                <td style="text-align: center; padding: 4px; min-width: 60px;">
                     {#if logoUrl}
                         <img 
                             src={logoUrl} 
                             alt="Airline logo" 
-                            style="max-width: 60px; max-height: 40px; object-fit: contain;"
+                            style="max-width: 60px; max-height: 40px; object-fit: contain; display: block; margin: 0 auto;"
                             onerror={handleImageError}
+                            loading="eager"
                         />
                     {:else}
                         <span style="color: {getStatusColor(item.Status || '')}">-</span>

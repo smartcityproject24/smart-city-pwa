@@ -19,24 +19,41 @@ export function getStatusColor(status: string): string {
     return color || "#fff";
 }
 
+// Memoization cache for logo URLs to prevent recalculation and blinking
+const logoUrlCache = new Map<string, string | null>();
+
 // Get airline logo URL for a flight number
 export function getAirlineLogo(flightNumber: string): string | null {
+    // Check cache first to prevent recalculation and blinking
+    if (logoUrlCache.has(flightNumber)) {
+        return logoUrlCache.get(flightNumber) ?? null;
+    }
+    
     const airlineCode = extractAirlineCode(flightNumber);
     if (!airlineCode || !AIRLINE_LOGO_PATHS[airlineCode]) {
+        logoUrlCache.set(flightNumber, null);
         return null;
     }
     
     const folderPath = AIRLINE_LOGO_PATHS[airlineCode];
     const fileName = AIRLINE_IMAGE_FILES[airlineCode] || `${folderPath.split('/').pop()}.jpg`;
-    const fullPath = `../data/assets/${folderPath}/${fileName}`;
+    
+    let imagePath: string | null = null;
     
     try {
-        // Use dynamic import with Vite's asset handling
-        const imagePath = new URL(fullPath, import.meta.url).href;
-        return imagePath;
+        // Use new URL with import.meta.url for proper Vite asset handling
+        // The relative path from the current file location
+        const relativePath = `../data/assets/${folderPath}/${fileName}`;
+        const url = new URL(relativePath, import.meta.url);
+        imagePath = url.href;
     } catch (e) {
-        return null;
+        // If URL construction fails, return null to prevent broken images
+        imagePath = null;
     }
+    
+    // Cache the result to prevent recalculation on re-renders (prevents blinking)
+    logoUrlCache.set(flightNumber, imagePath);
+    return imagePath;
 }
 
 // Handle image load error
