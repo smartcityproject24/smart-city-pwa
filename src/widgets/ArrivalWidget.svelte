@@ -7,19 +7,9 @@
     import {
         headerTitleTranslate,
         tableHeadersTranslate,
-        FlightStatus,
     } from "./constants";
-
-    interface FlightData {
-        Flight: string;
-        Status: string;
-        Airport: string;
-        Regularity: string;
-        "Actual date": string;
-        "Actual time": string;
-        "Sheduled date": string;
-        "Sheduled time": string;
-    }
+    import FlightTable from "./FlightTable.svelte";
+    import type { FlightData } from "./flightUtils";
 
     interface ArrivalsResponse {
         uuid: string;
@@ -108,20 +98,6 @@
         );
     }
 
-    // Get status color based on FlightStatus
-    function getStatusColor(status: string): string {
-        if (!status) return "#fff";
-        const cleanStatus = status.trim();
-        const color = FlightStatus[cleanStatus];
-        console.log(
-            "color >>> ",
-            cleanStatus,
-            FlightStatus[status],
-            FlightStatus["КЕЛИП КОНДУ"],
-        );
-
-        return color || "#fff";
-    }
 
     // Format time as HH:MM:SS
     function formatTime(date: Date): string {
@@ -232,54 +208,7 @@
                     <div class="current-time">{formatTime(currentTime)}</div>
                 </div>
                 <div class="table-container">
-                    <table class="arrivals-table">
-                        <thead>
-                            <tr>
-                                <th style="width: 15%;">{headers.Flight}</th>
-                                <th style="width: 25%;">{headers.Airport}</th>
-                                <th style="width: 15%;">{headers["Sheduled date"]}</th>
-                                <th style="width: 15%;">{headers["Sheduled time"]}</th>
-                                <th style="width: 15%;">{headers.Status}</th>
-                                <th style="width: 15%;">{headers["Actual time"]}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {#each currentSlide.items as item}
-                                <tr>
-                                    <td
-                                        style="color: {getStatusColor(
-                                            item.Status || '',
-                                        )}">{item.Flight}</td
-                                    >
-                                    <td
-                                        style="color: {getStatusColor(
-                                            item.Status || '',
-                                        )}">{item.Airport}</td
-                                    >
-                                    <td
-                                        style="color: {getStatusColor(
-                                            item.Status || '',
-                                        )}">{item["Sheduled date"]}</td
-                                    >
-                                    <td
-                                        style="color: {getStatusColor(
-                                            item.Status || '',
-                                        )}">{item["Sheduled time"]}</td
-                                    >
-                                    <td
-                                        style="color: {getStatusColor(
-                                            item.Status || '',
-                                        )}">{item.Status || "-"}</td
-                                    >
-                                    <td
-                                        style="color: {getStatusColor(
-                                            item.Status || '',
-                                        )}">{item["Actual time"] || "-"}</td
-                                    >
-                                </tr>
-                            {/each}
-                        </tbody>
-                    </table>
+                    <FlightTable items={currentSlide.items} headers={headers} tableClass="arrivals-table" />
                 </div>
                 <div class="footer">
                     <div class="slide-counter">
@@ -358,38 +287,6 @@
         align-items: flex-start;
     }
 
-    .arrivals-table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 1rem;
-        background: transparent;
-        color: #fff;
-
-        thead {
-            background-color: transparent;
-            top: 0;
-            background: #fff;
-            color: #0f1941;
-        }
-
-        th {
-            text-align: left;
-            font-weight: 600;
-            font-size: 20px;
-            word-break: break-word;
-            padding: 8px 4px;
-        }
-
-        td {
-            color: #fff;
-            font-weight: 500;
-            padding-bottom: 1rem;
-        }
-
-        tbody tr:nth-child(even) {
-            background-color: #0f1628;
-        }
-    }
 
     .footer {
         display: flex;
