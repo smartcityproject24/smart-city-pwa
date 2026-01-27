@@ -7,11 +7,12 @@
     import {
         headerTitleTranslate,
         tableHeadersTranslate,
-    } from "./constants";
+    } from "../model/constants";
     import FlightTable from "./FlightTable.svelte";
-    import type { FlightData } from "./flightUtils";
+    import type { FlightData } from "../model/flightUtils";
+    import { formatTime } from "@/utils/date-time-conveter";
 
-    interface ArrivalsResponse {
+    interface DeparturesResponse {
         uuid: string;
         kg: FlightData[];
         ru: FlightData[];
@@ -28,15 +29,16 @@
 
     const { isReady } = getContext<ApiReadyContext>("api");
 
-    let data = $state<ArrivalsResponse | null>(null);
     let loading = $state(true);
     let error = $state<string | null>(null);
     let currentSlideIndex = $state(0);
     let slides = $state<
         Array<{ language: string; langKey: string; items: FlightData[] }>
     >([]);
-    let DURATION_SEC = $state(0);
     let currentTime = $state(new Date());
+
+    const ITEMS_PER_SLIDE = 10;
+    const SLIDE_DURATION_MS = 5000;
 
     // Split array into chunks of 10
     function chunkArray<T>(array: T[], chunkSize: number): T[][] {
@@ -47,15 +49,13 @@
         return chunks;
     }
 
-    // Prepare slides from data
-    function prepareSlides(response: ArrivalsResponse) {
+    function prepareSlides(response: DeparturesResponse) {
         const allSlides: Array<{
             language: string;
             langKey: string;
             items: FlightData[];
         }> = [];
 
-        // Process kg, ru, en arrays
         const languages = [
             { key: "kg" as const },
             { key: "ru" as const },
@@ -64,11 +64,11 @@
 
         for (const lang of languages) {
             const items = response[
-                lang.key as keyof ArrivalsResponse
+                lang.key as keyof DeparturesResponse
             ] as FlightData[];
             if (Array.isArray(items) && items.length > 0) {
-                const chunks = chunkArray(items, 10);
-                const label = headerTitleTranslate[lang.key].arrival;
+                const chunks = chunkArray(items, ITEMS_PER_SLIDE);
+                const label = headerTitleTranslate[lang.key].departure;
                 for (const chunk of chunks) {
                     allSlides.push({
                         language: label,
@@ -80,16 +80,8 @@
         }
 
         slides = allSlides;
-
-        // Calculate total duration: (ru.length + kg.length + en.length) * 5
-        const totalItems =
-            (response.ru?.length || 0) +
-            (response.kg?.length || 0) +
-            (response.en?.length || 0);
-        DURATION_SEC = totalItems * 5;
     }
 
-    // Get column headers based on language
     function getColumnHeaders(langKey: string) {
         return (
             tableHeadersTranslate[
@@ -98,16 +90,7 @@
         );
     }
 
-
-    // Format time as HH:MM:SS
-    function formatTime(date: Date): string {
-        const hours = date.getHours().toString().padStart(2, "0");
-        const minutes = date.getMinutes().toString().padStart(2, "0");
-        const seconds = date.getSeconds().toString().padStart(2, "0");
-        return `${hours}:${minutes}:${seconds}`;
-    }
-
-    async function fetchArrivals() {
+    async function fetchDepartures() {
         if (!$isReady) {
             return;
         }
@@ -116,14 +99,16 @@
         error = null;
 
         try {
-            const url = `${API_CONFIG.baseUrl}/smart-city/api/v1/flights-arrivals`;
-            const response = await apiRequest<ArrivalsResponse>(url);
-            data = response;
+            const url =
+                `${API_CONFIG.baseUrl}/smart-city/api/v1/flights-departures`;
+            const response = await apiRequest<DeparturesResponse>(url);
             prepareSlides(response);
         } catch (err) {
             error =
-                err instanceof Error ? err.message : "Failed to fetch arrivals";
-            console.error("Error fetching arrivals:", err);
+                err instanceof Error
+                    ? err.message
+                    : "Failed to fetch departures";
+            console.error("Error fetching departures:", err);
         } finally {
             loading = false;
         }
@@ -133,36 +118,29 @@
     let finishTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
     function startSlideshow() {
-        // Clear any existing timeouts
         if (slideTimeoutId) clearTimeout(slideTimeoutId);
         if (finishTimeoutId) clearTimeout(finishTimeoutId);
 
         if (slides.length === 0) {
             finishTimeoutId = setTimeout(() => {
                 onFinished?.();
-            }, 5000); // Default 5 seconds if no data
+            }, 5000);
             return;
         }
-
-        const SLIDE_DURATION_MS = 5000; // Each table shown for 5 seconds
 
         function showNextSlide() {
             if (currentSlideIndex < slides.length - 1) {
                 currentSlideIndex++;
                 slideTimeoutId = setTimeout(showNextSlide, SLIDE_DURATION_MS);
             } else {
-                // All slides shown, finish widget after last slide duration
                 finishTimeoutId = setTimeout(() => {
                     onFinished?.();
                 }, SLIDE_DURATION_MS);
             }
         }
-
-        // Show first slide immediately, then advance every 5 seconds
         slideTimeoutId = setTimeout(showNextSlide, SLIDE_DURATION_MS);
     }
 
-    // Start slideshow when data is loaded
     $effect(() => {
         if (!loading && slides.length > 0) {
             startSlideshow();
@@ -170,7 +148,6 @@
     });
 
     onMount(() => {
-        // Update current time every second
         const timeInterval = setInterval(() => {
             currentTime = new Date();
         }, 1000);
@@ -178,7 +155,7 @@
         // Wait for API to be ready
         const unsubscribe = isReady.subscribe((ready) => {
             if (ready) {
-                fetchArrivals();
+                fetchDepartures();
             }
         });
 
@@ -191,13 +168,13 @@
     });
 </script>
 
-<div class="arrival-widget">
+<div class="departure-widget">
     {#if loading}
-        <div class="loading">Loading arrivals...</div>
+        <div class="loading">Loading departures...</div>
     {:else if error}
         <div class="error">Error: {error}</div>
     {:else if slides.length === 0}
-        <div class="empty">No arrival data available</div>
+        <div class="empty">No departure data available</div>
     {:else if slides[currentSlideIndex]}
         {@const currentSlide = slides[currentSlideIndex]}
         {@const headers = getColumnHeaders(currentSlide.langKey)}
@@ -208,7 +185,7 @@
                     <div class="current-time">{formatTime(currentTime)}</div>
                 </div>
                 <div class="table-container">
-                    <FlightTable items={currentSlide.items} headers={headers} tableClass="arrivals-table" />
+                    <FlightTable items={currentSlide.items} headers={headers} tableClass="departures-table" />
                 </div>
                 <div class="footer">
                     <div class="slide-counter">
@@ -221,7 +198,7 @@
 </div>
 
 <style lang="scss">
-    .arrival-widget {
+    .departure-widget {
         display: flex;
         flex-direction: column;
         align-items: center;

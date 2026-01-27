@@ -96,37 +96,37 @@ const AIRLINES = {
   
 };
 
-// Mapping from airline codes to their folder names in assets
+// Mapping from airline codes to their folder names in assets (served from /public/airlines/Логотипы)
 const AIRLINE_LOGO_PATHS: Record<string, string> = {
-    YK: 'airport-icons/Логотипы/Avia Traffic',
-    U6: 'airport-icons/Логотипы/Ural airline',
-    KC: 'airport-icons/Логотипы/Airastana',
-    S7: 'airport-icons/Логотипы/S7 airline',
-    SU: 'airport-icons/Логотипы/Аэрофлот',
-    J2: 'airport-icons/Логотипы/Azerbajan airlines',
-    MN: 'airport-icons/Логотипы/Asman Airlines',
-    XY: 'airport-icons/Логотипы/Uzbekistan Airways',
-    FZ: 'airport-icons/Логотипы/Flydubai',
-    TK: 'airport-icons/Логотипы/Turkish Airlines',
-    VF: 'airport-icons/Логотипы/A jet',
-    CZ: 'airport-icons/Логотипы/Chinasouthern',
-    PC: 'airport-icons/Логотипы/Pegasus',
-    N4: 'airport-icons/Логотипы/Nordwind airline',
-    TW: 'airport-icons/Логотипы/T Way',
-    GJ: 'airport-icons/Логотипы/GJ (ZHEJIANG LOONGAIR AIRLINES)',
-    SZ: 'airport-icons/Логотипы/SZ (SOMON AIR)',
-    IQ: 'airport-icons/Логотипы/qazaq air',
-    RSX: 'airport-icons/Логотипы/red sea',
-    ANK: 'airport-icons/Логотипы/Аэрономад',
-    KA: 'airport-icons/Логотипы/Аэрономад',
-    K1: 'airport-icons/Логотипы/Sky fru',
-    K9: 'airport-icons/Логотипы/Tez jet',
-    HR: 'airport-icons/Логотипы/Air arabia', // Using Air Arabia folder as placeholder
-    G9: 'airport-icons/Логотипы/Air arabia',
-    HY: 'airport-icons/Логотипы/Uzbekistan Airways',
-    J9: 'airport-icons/Логотипы/Jazzera',
-    FV: 'airport-icons/Логотипы/Rossiya',
-    C6: 'airport-icons/Логотипы/Air arabia', // Using Air Arabia folder as placeholder
+    YK: 'airlines/Логотипы/Avia Traffic',
+    U6: 'airlines/Логотипы/Ural airline',
+    KC: 'airlines/Логотипы/Airastana',
+    S7: 'airlines/Логотипы/S7 airline',
+    SU: 'airlines/Логотипы/Аэрофлот',
+    J2: 'airlines/Логотипы/Azerbajan airlines',
+    MN: 'airlines/Логотипы/Asman Airlines',
+    XY: 'airlines/Логотипы/Uzbekistan Airways',
+    FZ: 'airlines/Логотипы/Flydubai',
+    TK: 'airlines/Логотипы/Turkish Airlines',
+    VF: 'airlines/Логотипы/A jet',
+    CZ: 'airlines/Логотипы/Chinasouthern',
+    PC: 'airlines/Логотипы/Pegasus',
+    N4: 'airlines/Логотипы/Nordwind airline',
+    TW: 'airlines/Логотипы/T Way',
+    GJ: 'airlines/Логотипы/GJ (ZHEJIANG LOONGAIR AIRLINES)',
+    SZ: 'airlines/Логотипы/SZ (SOMON AIR)',
+    IQ: 'airlines/Логотипы/qazaq air',
+    RSX: 'airlines/Логотипы/red sea',
+    ANK: 'airlines/Логотипы/Аэрономад',
+    KA: 'airlines/Логотипы/Аэрономад',
+    K1: 'airlines/Логотипы/Sky fru',
+    K9: 'airlines/Логотипы/Tez jet',
+    HR: 'airlines/Логотипы/Air arabia', // placeholder until Hahn Air logo is added
+    G9: 'airlines/Логотипы/Air arabia',
+    HY: 'airlines/Логотипы/Uzbekistan Airways',
+    J9: 'airlines/Логотипы/Jazzera',
+    FV: 'airlines/Логотипы/Rossiya',
+    C6: 'airlines/Логотипы/Air arabia', // placeholder until Centrum Air logo is added
 };
 
 export const AIRLINE_IMAGE_FILES: Record<string, string> = {

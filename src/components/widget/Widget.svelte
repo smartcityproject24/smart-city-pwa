@@ -2,8 +2,8 @@
     import type { Block } from "@core";
     import type { Component } from "svelte";
     import { fade } from "svelte/transition";
-    import DepartureWidget from "@/widgets/DepartureWidget.svelte";
-    import ArrivalWidget from "@/widgets/ArrivalWidget.svelte";
+    import DepartureWidget from "@/widgets/flights/ui/DepartureWidget.svelte";
+    import ArrivalWidget from "@/widgets/flights/ui/ArrivalWidget.svelte";
 
     const WIDGET_MAP: Record<string, Component<any>> = {
         FLIGHTS_DEPARTURE: DepartureWidget,
