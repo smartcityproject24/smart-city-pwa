@@ -10,6 +10,7 @@ import { NotFound } from "./not-found";
 import { Interface } from "./interface";
 import { ControlPanel } from "./control-panel";
 import { SplashLogo } from "./ui";
+import { Widget } from "./widget";
 
 const components: ComponentsContext = {
     solution: Solution,
@@ -21,6 +22,7 @@ const components: ComponentsContext = {
     not_found: NotFound,
     interface: Interface,
     control_panel: ControlPanel,
+    widget: Widget,
     empty_solution: SplashLogo,
 };
 
