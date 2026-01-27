@@ -1,6 +1,6 @@
 <script lang="ts">
-    import type { FlightData } from "./flightUtils";
-    import { getStatusColor, getAirlineLogo, handleImageError } from "./flightUtils";
+    import type { FlightData } from "../model/flightUtils";
+    import { getStatusColor, getAirlineLogo, handleImageError } from "../model/flightUtils";
 
     interface Props {
         items: FlightData[];
@@ -91,7 +91,7 @@
         th {
             text-align: left;
             font-weight: 600;
-            font-size: 20px;
+            font-size: 18px;
             word-break: break-word;
             padding: 8px 4px;
         }

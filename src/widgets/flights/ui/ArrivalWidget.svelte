@@ -7,11 +7,11 @@
     import {
         headerTitleTranslate,
         tableHeadersTranslate,
-    } from "./constants";
-    import FlightTable from "./FlightTable.svelte";
-    import type { FlightData } from "./flightUtils";
+    } from "@/widgets/flights/model/constants";
+    import FlightTable from "@/widgets/flights/ui/FlightTable.svelte";
+    import type { FlightData } from "@/widgets/flights/model/flightUtils";
 
-    interface DeparturesResponse {
+    interface ArrivalsResponse {
         uuid: string;
         kg: FlightData[];
         ru: FlightData[];
@@ -28,15 +28,16 @@
 
     const { isReady } = getContext<ApiReadyContext>("api");
 
-    let data = $state<DeparturesResponse | null>(null);
     let loading = $state(true);
     let error = $state<string | null>(null);
     let currentSlideIndex = $state(0);
     let slides = $state<
         Array<{ language: string; langKey: string; items: FlightData[] }>
     >([]);
-    let DURATION_SEC = $state(0);
     let currentTime = $state(new Date());
+
+    const ITEMS_PER_SLIDE = 10;
+    const SLIDE_DURATION_MS = 5000;
 
     // Split array into chunks of 10
     function chunkArray<T>(array: T[], chunkSize: number): T[][] {
@@ -48,14 +49,13 @@
     }
 
     // Prepare slides from data
-    function prepareSlides(response: DeparturesResponse) {
+    function prepareSlides(response: ArrivalsResponse) {
         const allSlides: Array<{
             language: string;
             langKey: string;
             items: FlightData[];
         }> = [];
 
-        // Process kg, ru, en arrays
         const languages = [
             { key: "kg" as const },
             { key: "ru" as const },
@@ -64,11 +64,11 @@
 
         for (const lang of languages) {
             const items = response[
-                lang.key as keyof DeparturesResponse
+                lang.key as keyof ArrivalsResponse
             ] as FlightData[];
             if (Array.isArray(items) && items.length > 0) {
-                const chunks = chunkArray(items, 10);
-                const label = headerTitleTranslate[lang.key].departure;
+                const chunks = chunkArray(items, ITEMS_PER_SLIDE);
+                const label = headerTitleTranslate[lang.key].arrival;
                 for (const chunk of chunks) {
                     allSlides.push({
                         language: label,
@@ -80,13 +80,6 @@
         }
 
         slides = allSlides;
-
-        // Calculate total duration: (ru.length + kg.length + en.length) * 5
-        const totalItems =
-            (response.ru?.length || 0) +
-            (response.kg?.length || 0) +
-            (response.en?.length || 0);
-        DURATION_SEC = totalItems * 5;
     }
 
     // Get column headers based on language
@@ -107,7 +100,7 @@
         return `${hours}:${minutes}:${seconds}`;
     }
 
-    async function fetchDepartures() {
+    async function fetchArrivals() {
         if (!$isReady) {
             return;
         }
@@ -116,16 +109,14 @@
         error = null;
 
         try {
-            const url = `${API_CONFIG.baseUrl}/smart-city/api/v1/flights-departures`;
-            const response = await apiRequest<DeparturesResponse>(url);
-            data = response;
+            const url =
+                `${API_CONFIG.baseUrl}/smart-city/api/v1/flights-arrivals`;
+            const response = await apiRequest<ArrivalsResponse>(url);
             prepareSlides(response);
         } catch (err) {
             error =
-                err instanceof Error
-                    ? err.message
-                    : "Failed to fetch departures";
-            console.error("Error fetching departures:", err);
+                err instanceof Error ? err.message : "Failed to fetch arrivals";
+            console.error("Error fetching arrivals:", err);
         } finally {
             loading = false;
         }
@@ -135,18 +126,15 @@
     let finishTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
     function startSlideshow() {
-        // Clear any existing timeouts
         if (slideTimeoutId) clearTimeout(slideTimeoutId);
         if (finishTimeoutId) clearTimeout(finishTimeoutId);
 
         if (slides.length === 0) {
             finishTimeoutId = setTimeout(() => {
                 onFinished?.();
-            }, 5000); // Default 5 seconds if no data
+            }, SLIDE_DURATION_MS);
             return;
         }
-
-        const SLIDE_DURATION_MS = 5000; // Each table shown for 5 seconds
 
         function showNextSlide() {
             if (currentSlideIndex < slides.length - 1) {
@@ -180,7 +168,7 @@
         // Wait for API to be ready
         const unsubscribe = isReady.subscribe((ready) => {
             if (ready) {
-                fetchDepartures();
+                fetchArrivals();
             }
         });
 
@@ -193,13 +181,13 @@
     });
 </script>
 
-<div class="departure-widget">
+<div class="arrival-widget">
     {#if loading}
-        <div class="loading">Loading departures...</div>
+        <div class="loading">Loading arrivals...</div>
     {:else if error}
         <div class="error">Error: {error}</div>
     {:else if slides.length === 0}
-        <div class="empty">No departure data available</div>
+        <div class="empty">No arrival data available</div>
     {:else if slides[currentSlideIndex]}
         {@const currentSlide = slides[currentSlideIndex]}
         {@const headers = getColumnHeaders(currentSlide.langKey)}
@@ -210,7 +198,7 @@
                     <div class="current-time">{formatTime(currentTime)}</div>
                 </div>
                 <div class="table-container">
-                    <FlightTable items={currentSlide.items} headers={headers} tableClass="departures-table" />
+                    <FlightTable items={currentSlide.items} headers={headers} tableClass="arrivals-table" />
                 </div>
                 <div class="footer">
                     <div class="slide-counter">
@@ -223,7 +211,7 @@
 </div>
 
 <style lang="scss">
-    .departure-widget {
+    .arrival-widget {
         display: flex;
         flex-direction: column;
         align-items: center;
