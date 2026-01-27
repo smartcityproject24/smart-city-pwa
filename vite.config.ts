@@ -34,7 +34,7 @@ export default defineConfig({
 		}
 	},
     server: {
-        port: 17022,
+        port: 16026,
         https: {
             key: fs.readFileSync(path.resolve(__dirname, 'ssl/RGB.KG.key')),
             cert: fs.readFileSync(path.resolve(__dirname, 'ssl/RGB_KG.crt'))
@@ -46,7 +46,7 @@ export default defineConfig({
         ]
     },
     preview: {
-        port: 17022,
+        port: 16026,
         https: {
             key: fs.readFileSync(path.resolve(__dirname, 'ssl/RGB.KG.key')),
             cert: fs.readFileSync(path.resolve(__dirname, 'ssl/RGB_KG.crt'))
