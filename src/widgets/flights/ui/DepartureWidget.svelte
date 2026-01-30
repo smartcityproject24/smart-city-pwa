@@ -37,8 +37,9 @@
     >([]);
     let currentTime = $state(new Date());
 
-    const ITEMS_PER_SLIDE = 10;
-    const SLIDE_DURATION_MS = 5000;
+    const ITEMS_PER_SLIDE = 24; // 2 tables × 12 flights per slide
+    const FLIGHTS_PER_TABLE = 12;
+    const SLIDE_DURATION_MS = 10000;
 
     // Split array into chunks of 10
     function chunkArray<T>(array: T[], chunkSize: number): T[][] {
@@ -169,6 +170,9 @@
 </script>
 
 <div class="departure-widget">
+    <div class="logo">
+        <img src="/public/manas-logo.svg" alt="Arrival logo" />
+    </div>
     {#if loading}
         <div class="loading">Loading departures...</div>
     {:else if error}
@@ -178,18 +182,31 @@
     {:else if slides[currentSlideIndex]}
         {@const currentSlide = slides[currentSlideIndex]}
         {@const headers = getColumnHeaders(currentSlide.langKey)}
+        {@const totalTablePositions = slides.length * 2}
         {#key currentSlideIndex}
             <div class="slide">
-                <div class="header">
-                    <h3 class="widget-title">{currentSlide.language}</h3>
-                    <div class="current-time">{formatTime(currentTime)}</div>
-                </div>
                 <div class="table-container">
-                    <FlightTable items={currentSlide.items} headers={headers} tableClass="departures-table" />
-                </div>
-                <div class="footer">
-                    <div class="slide-counter">
-                        {currentSlideIndex + 1}/{slides.length}
+                    <div class="tables-row">
+                        <div class="table-cell">
+                            <FlightTable
+                                items={currentSlide.items.slice(0, FLIGHTS_PER_TABLE)}
+                                headers={headers}
+                                tableClass="departures-table"
+                                title={currentSlide.language}
+                                currentTime={formatTime(currentTime)}
+                                slideCounter={`${currentSlideIndex * 2 + 1}/${totalTablePositions}`}
+                            />
+                        </div>
+                        <div class="table-cell">
+                            <FlightTable
+                                items={currentSlide.items.slice(FLIGHTS_PER_TABLE, ITEMS_PER_SLIDE)}
+                                headers={headers}
+                                tableClass="departures-table"
+                                title={currentSlide.language}
+                                currentTime={formatTime(currentTime)}
+                                slideCounter={`${currentSlideIndex * 2 + 2}/${totalTablePositions}`}
+                            />
+                        </div>
                     </div>
                 </div>
             </div>
@@ -200,17 +217,23 @@
 <style lang="scss">
     .departure-widget {
         display: flex;
-        flex-direction: column;
         align-items: center;
         justify-content: center;
         min-height: 120px;
         width: 100%;
         height: 100%;
-        background: #0f1941;
+        background: #0A1332;
         color: #fff;
         z-index: 9999;
-        font-family: serif;
+        font-family: Roboto, sans-serif;
         line-height: 1;
+    }
+    .logo {
+        background: #000209;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
 
     .loading,
@@ -236,26 +259,6 @@
         box-sizing: border-box;
     }
 
-    .header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin: 1.5rem 0.5rem;
-    }
-
-    .widget-title {
-        margin: 0;
-        font-size: 2.5rem;
-        font-weight: 600;
-    }
-
-    .current-time {
-        font-size: 2.5rem;
-        font-weight: 600;
-        color: #fff;
-        font-variant-numeric: tabular-nums;
-    }
-
     .table-container {
         width: 100%;
         flex: 1;
@@ -264,16 +267,18 @@
         align-items: flex-start;
     }
 
-
-    .footer {
+    .tables-row {
         display: flex;
-        justify-content: flex-end;
-        align-items: center;
+        flex-direction: row;
+        gap: 1rem;
+        width: 100%;
+        flex: 1;
+        min-width: 0;
     }
 
-    .slide-counter {
-        font-size: 1rem;
-        color: #fff;
-        opacity: 0.8;
+    .table-cell {
+        flex: 1;
+        min-width: 0;
+        overflow: auto;
     }
 </style>
