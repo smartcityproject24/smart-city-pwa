@@ -171,7 +171,7 @@
 
 <div class="departure-widget">
     <div class="logo">
-        <img src="/public/manas-logo.svg" alt="Arrival logo" />
+        <img src="/manas-logo.svg" alt="Arrival logo" />
     </div>
     {#if loading}
         <div class="loading">Loading departures...</div>
