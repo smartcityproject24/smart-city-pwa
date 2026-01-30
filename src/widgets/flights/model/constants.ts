@@ -37,29 +37,32 @@ const headerTitleTranslate = {
 const tableHeadersTranslate = {
     en: {
         Flight: "Flight",
-        Airport: "Airport",
-        "Sheduled date": "Sheduled date",
-        "Sheduled time": "Sheduled time",
+        Airport: "Route",
+        "Sheduled date": "Planned date",
+        "Sheduled time": "Planned",
         Status: "Status",
-        "Actual time": "Actual time",
+        "Actual time": "Actual",
+        "Actual date": "Actual date",
         Logo: "",
     },
     ru: {
         Flight: "Рейс",
-        Airport: "Аэропорт",
-        "Sheduled date": "Запланированная дата",
-        "Sheduled time": "Запланированное время",
+        Airport: "Маршрут",
+        "Sheduled date": "План дата",
+        "Sheduled time": "План",
         Status: "Статус",
-        "Actual time": "Фактическое время",
+        "Actual time": "Факт",
+        "Actual date": "Факт дата",
         Logo: "",
     },
     kg: {
-        Flight: "Учуу",
-        Airport: "Аэропорт",
-        "Sheduled date": "Пландаштырылган кун",
-        "Sheduled time": "Пландаштырылган убакыт",
+        Flight: "Рейс",
+        Airport: "Маршрут",
+        "Sheduled date": "План Дата",
+        "Sheduled time": "Пландаштырылган",
         Status: "Статус",
-        "Actual time": "Чыныгы убакыт",
+        "Actual time": "Чыныгы",
+        "Actual date": "Факт дата",
         Logo: "",
     },
 };
@@ -91,6 +94,7 @@ const AIRLINES = {
     G9: 'Air Arabia',
     HY: 'Uzbekistan Airways (Узбекские авиалинии)',
     J9: 'Jazeera Airways (Джазира Эйрвэйз)',
+    JZR: 'Jazeera Airways Kuwait (Джазира Эйрвэйз)',
     FV: 'Авиакомпания «Россия»',
     C6: 'Centrum Air',
   
@@ -125,6 +129,7 @@ const AIRLINE_LOGO_PATHS: Record<string, string> = {
     G9: 'airlines/Логотипы/Air arabia',
     HY: 'airlines/Логотипы/Uzbekistan Airways',
     J9: 'airlines/Логотипы/Jazzera',
+    JZR: 'airlines/Логотипы/Jazzera',
     FV: 'airlines/Логотипы/Rossiya',
     C6: 'airlines/Логотипы/Air arabia', // placeholder until Centrum Air logo is added
 };
@@ -157,6 +162,7 @@ export const AIRLINE_IMAGE_FILES: Record<string, string> = {
     G9: 'Air arabia.jpg',
     HY: 'Uzbekistan Airways.JPG',
     J9: 'J9st (1).jpg',
+    JZR: 'J9st (1).jpg',
     FV: 'Rossiya.JPG',
     C6: 'Air arabia.jpg', // Placeholder - update when Centrum Air logo is added
 };
