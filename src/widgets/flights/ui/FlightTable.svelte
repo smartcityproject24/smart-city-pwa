@@ -52,7 +52,7 @@
         <tr>
             <th style="width: 5%;">{headers.Logo.toUpperCase()}</th>
             <th style="width: 10%;">{headers.Flight.toUpperCase()}</th>
-            <th style="width: 16%;">{headers.Airport.toUpperCase()}</th>
+            <th style="width: 16%; text-align: center;">{headers.Airport.toUpperCase()}</th>
             <th style="width: 13%;">{headers["Sheduled date"].toUpperCase()}</th>
             <th style="width: 13%;">{headers["Actual date"].toUpperCase()}</th>
             <th style="width: 13%;">{headers["Sheduled time"].toUpperCase()}</th>
@@ -80,7 +80,7 @@
                 <td>
                     {item.Flight}
                 </td>
-                <td>
+                <td style="text-align: center;">
                     {item.Airport}
                 </td>
                 <td>
