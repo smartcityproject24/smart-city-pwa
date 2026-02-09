@@ -39,9 +39,17 @@
 
         try {
             const data = await dashboardService.getSolutions($dashboardUUID);
+            const settings = await dashboardService.getSettings($dashboardUUID);
             const currentPageInfo = $pageInfo;
 
-            const sortedSettings = sortScheduleSettings(data.settings);
+            const settingsForSchedule =
+                data.settings ??
+                settings?.settings?.map((s) => ({
+                    settingType: s.settingType,
+                    settingName: s.settingName,
+                    settingValue: s.settingValue,
+                }));
+            const sortedSettings = sortScheduleSettings(settingsForSchedule);
             scheduleSettings.set(sortedSettings || []);
 
             if (currentPageInfo && data?.solution) {
@@ -95,6 +103,39 @@
                     solutionHeight: data.solution?.height,
                     blocks: interfaceBlocks,
                 });
+            } else if (!data?.solution && (settings?.settings?.length ||
+                settings?.playlists?.length)) {
+                const { settings: ss = [], playlists: pl = [], deviceName: dn,
+                    deviceType: dt } = settings ?? {};
+
+                const blocks = [
+                    { type: "control_panel" as const },
+                    ...ss.map(s => ({
+                        type: "setting" as const,
+                        blocks: [{ type: "setting" as const, name: s.settingName,
+                            value: s.settingValue }],
+                    })),
+                    ...(pl.length ? pl.map(p => ({
+                        type: "SCREEN" as const,
+                        playlistUUID: p.playlistUUID,
+                        name: p.playlistName,
+                        payload: { settings: ss },
+                    })) : ss.length ? [{ type: "SCREEN" as const,
+                        payload: { settings: ss } }] : []),
+                ];
+
+                const newPageInfo = {
+                    ...(currentPageInfo ?? {}),
+                    dashboardUUID: data?.dashboardUUID ?? "",
+                    dashboardName: data?.dashboardName ?? dn,
+                    dashboardType: data?.dashboardType ?? dt,
+                    blocks: [{ type: "interface" as const, blocks }],
+                };
+
+                if (!currentPageInfo ||
+                    !isPageInfoEqual(currentPageInfo, newPageInfo)) {
+                    pageInfo.set(newPageInfo);
+                } else if (isPolling) return;
             } else if (data) {
                 const interfaceBlocks: Block[] = [
                     {

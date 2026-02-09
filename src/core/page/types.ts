@@ -1,17 +1,18 @@
 import type { Writable } from "svelte/store";
 
-export type BlockType = 
-    | "SOLUTION" 
-    | "SCREEN" 
-    | "WIDGET" 
-    | "header" 
-    | "body" 
-    | "login_form" 
-    | "select_language" 
+export type BlockType =
+    | "SOLUTION"
+    | "SCREEN"
+    | "WIDGET"
+    | "header"
+    | "body"
+    | "login_form"
+    | "select_language"
     | "interface"
     | "not_found"
     | "control_panel"
-    | "empty_solution";
+    | "empty_solution"
+    | "setting";
 
 export interface Block {
     uuid?: string;
@@ -50,9 +51,12 @@ export type PageContext = {
     goToPage: (page: string) => void;
     goToPreviousPage: () => void;
     isPageInfoEqual: (oldInfo: PageInfo | null, newInfo: PageInfo) => boolean;
-    parseSchedule: (scheduleValue: string | null | undefined) => Schedule | null;
-    sortScheduleSettings: (settings?: Record<string, string>[]) => Record<string, string>[] | undefined;
+    parseSchedule: (
+        scheduleValue: string | null | undefined,
+    ) => Schedule | null;
+    sortScheduleSettings: (
+        settings?: Record<string, string>[],
+    ) => Record<string, string>[] | undefined;
     isScheduleActive: (schedule: Schedule) => boolean;
     getActiveSchedule: (settings?: Record<string, string>[]) => Schedule | null;
 };
-

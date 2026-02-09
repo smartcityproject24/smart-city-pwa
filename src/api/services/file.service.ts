@@ -11,8 +11,10 @@ export const fileService = {
      * @param fileUUID - UUID файла
      * @returns Promise<Blob> - blob данных файла
      */
-    async getFileBlob(fileUUID: string): Promise<Blob> {
-        const url = API_CONFIG.endpoints.files.getFile(fileUUID);
+    async getFileBlob(fileUUID: string, useRedirect?: boolean): Promise<Blob> {
+        const url = useRedirect
+            ? API_CONFIG.endpoints.files.getFileRedirect(fileUUID)
+            : API_CONFIG.endpoints.files.getFile(fileUUID);
 
         try {
             const response = await apiRequestRaw(url);

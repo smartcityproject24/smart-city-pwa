@@ -40,6 +40,12 @@
 		box-sizing: border-box;
 	}
 	
+	@font-face {
+		font-family: "digital-7";
+		src: url("/fonts/digital-7.ttf");
+	}
+
+	
 	body {
 		display: flex;
 		flex-direction: column;

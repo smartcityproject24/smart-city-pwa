@@ -9,14 +9,22 @@ export const API_CONFIG = {
             refresh: `${API_BASE_V1_URL}/auth/refresh`,
         },
         dashboards: {
-            getSolution: (solutionUUID: string) => `${API_BASE_V1_URL}/dashboards/${solutionUUID}/solutions`,
-            createLog: (dashboardUUID: string) => `${API_BASE_V1_URL}/dashboards/${dashboardUUID}/logs`,
+            getSolution: (solutionUUID: string) =>
+                `${API_BASE_V1_URL}/dashboards/${solutionUUID}/solutions`,
+            // Temporary: createLog endpoint disabled
+            // createLog: (dashboardUUID: string) => `${API_BASE_V1_URL}/dashboards/${dashboardUUID}/logs`,
+            getSettings: (dashboardUUID: string) =>
+                `${API_BASE_V1_URL}/dashboards/${dashboardUUID}/settings`,
         },
         playlists: {
-            getPlaylist: (playlistUUID: string) => `${API_BASE_V1_URL}/playlists/${playlistUUID}/contents/sort`,
+            getPlaylist: (playlistUUID: string) =>
+                `${API_BASE_V1_URL}/playlists/${playlistUUID}/contents/sort`,
         },
         files: {
-            getFile: (fileUUID: string) => `${API_BASE_V1_URL}/files/${fileUUID}/dashboard`,
+            getFile: (fileUUID: string) =>
+                `${API_BASE_V1_URL}/files/${fileUUID}/dashboard`,
+            getFileRedirect: (fileUUID: string) =>
+                `${API_BASE_V1_URL}/files/${fileUUID}/redirect`,
         },
     },
 } as const;
