@@ -15,6 +15,7 @@
     import { ApiError } from "@api/types/errors";
     import { clearFilesCache } from "@core/pwa/cache";
     import { SplashLogo } from "@components/ui";
+    import { GasStationWidget, BoardTypesEnum } from "@/widgets/gas-station";
 
     let {
         blocks = [],
@@ -24,6 +25,7 @@
         positionY = undefined,
         playlistUUID = undefined,
         uuid = undefined,
+        payload = undefined,
     }: {
         blocks?: Block[];
         width?: number;
@@ -32,6 +34,7 @@
         positionY?: number;
         playlistUUID?: string;
         uuid?: string;
+        payload?: { settings?: { settingType: string; settingName: string; settingValue: string }[] };
     } = $props();
 
     const { isReady } = getContext<ApiReadyContext>("api");
@@ -43,6 +46,8 @@
     let currentVideoIndex = $state(0);
     let playlistContents = $state<PlaylistContent[]>([]);
     let blobUrls = $state<string[]>([]);
+    let petrolVideoUrl = $state<string | null>(null);
+    let isPetrolVideoPlaying = $state(false);
     let isLoadingPlaylist = $state(false);
     let error = $state<ApiError | null>(null);
     let playlistCheckInterval: ReturnType<typeof setInterval> | null = null;
@@ -52,7 +57,18 @@
         blocks.some((block) => String(block.type).toUpperCase() === "WIDGET")
     );
 
-    // TODO: Рефакторинг и удаление debug консолей
+    const screenSettings = $derived(payload?.settings ?? []);
+    const petrolVideoSetting = $derived(
+        screenSettings.find((s) => s.settingType === "PETROL_STATION_VIDEO")
+    );
+    const petrolVideoFileUUID = $derived(petrolVideoSetting?.settingValue);
+    const isFullscreen = $derived(width == null || height == null);
+    const screenStyle = $derived(
+        isFullscreen
+            ? "width: 100%; height: 100%; top: 0; left: 0;"
+            : `width: ${width}px; height: ${height}px; top: ${positionY ?? 0}px; left: ${positionX ?? 0}px;`
+    );
+
     const isPlaylistChanged = (
         oldContents: PlaylistContent[],
         newContents: PlaylistContent[],
@@ -66,11 +82,64 @@
     };
 
     const handleVideoEnded = () => {
-        if (blobUrls.length === 0) {
+        if (blobUrls.length === 0 && !petrolVideoUrl) {
             return;
         }
 
-        currentVideoIndex = (currentVideoIndex + 1) % blobUrls.length;
+        if (isPetrolVideoPlaying) {
+            isPetrolVideoPlaying = false;
+            currentVideoIndex = 0;
+            return;
+        }
+
+        if (currentVideoIndex < blobUrls.length - 1) {
+            currentVideoIndex++;
+            return;
+        }
+
+        if (petrolVideoUrl) {
+            isPetrolVideoPlaying = true;
+        } else {
+            currentVideoIndex = 0;
+        }
+    };
+
+    const handleVideoPlay = () => {
+        if (!videoElement || $opacity === 0 || videoElement.currentTime > 0.5) return;
+        if (
+            !isPetrolVideoPlaying &&
+            playlistUUID &&
+            playlistContents[currentVideoIndex] &&
+            $dashboardUUID
+        ) {
+            const currentContent = playlistContents[currentVideoIndex];
+            logger.logVideoStart($dashboardUUID, {
+                playlistUUID,
+                fileUUID: currentContent.fileUUID,
+                videoIndex: currentVideoIndex,
+                screenUUID: uuid,
+            });
+        }
+    };
+
+    const handleVideoError = () => {
+        if (!videoElement) return;
+        if (
+            !isPetrolVideoPlaying &&
+            playlistUUID &&
+            playlistContents[currentVideoIndex] &&
+            $dashboardUUID
+        ) {
+            const currentContent = playlistContents[currentVideoIndex];
+            const error = videoElement.error;
+            logger.logVideoError($dashboardUUID, {
+                playlistUUID,
+                fileUUID: currentContent.fileUUID,
+                error: error?.message || "Unknown video error",
+                errorCode: error?.code?.toString() || "UNKNOWN",
+                screenUUID: uuid,
+            });
+        }
     };
 
     const loadPlaylist = async (uuid: string) => {
@@ -162,19 +231,48 @@
         }
     };
 
+    const loadPetrolVideo = async (fileUUID: string) => {
+        if (!fileUUID || !$isReady) return;
+        try {
+            const blob = await fileService.getFileBlob(fileUUID, true).catch((err) => {
+                if (!navigator.onLine) {
+                    console.warn(
+                        `[Screen] Petrol video ${fileUUID} not available offline, not in cache`,
+                    );
+                }
+                return err;
+            });
+            if (blob && blob instanceof Blob) {
+                if (petrolVideoUrl) {
+                    URL.revokeObjectURL(petrolVideoUrl);
+                }
+                petrolVideoUrl = URL.createObjectURL(blob);
+            } else {
+                console.warn(`[Screen] Failed to load petrol video blob for ${fileUUID}`);
+            }
+        } catch (err) {
+            if (err instanceof ApiError) {
+                console.error(`[Screen] ApiError loading petrol video:`, err.message);
+            } else {
+                console.error("[Screen] Failed to load petrol video:", err);
+            }
+        }
+    };
+
     $effect(() => {
-        if (!playlistUUID) {
+        if (playlistUUID && $isReady) {
+            loadPlaylist(playlistUUID);
+        } else if (!playlistUUID) {
             blobUrls.forEach((url) => URL.revokeObjectURL(url));
             blobUrls = [];
             playlistContents = [];
-            return;
         }
+    });
 
-        if (!$isReady) {
-            return;
+    $effect(() => {
+        if (petrolVideoFileUUID && $isReady) {
+            loadPetrolVideo(petrolVideoFileUUID);
         }
-
-        loadPlaylist(playlistUUID);
     });
 
     $effect(() => {
@@ -228,166 +326,29 @@
     });
 
     $effect(() => {
-        if (!videoElement || blobUrls.length === 0) {
-            return;
-        }
-
+        if (!videoElement) return;
         if ($opacity === 0) {
-            if (!videoElement.paused) {
-                videoElement.pause();
-            }
-        } else {
-            if (videoElement.paused && videoElement.readyState >= 2) {
-                videoElement.play().catch((err) => {
-                    if (err.name !== "AbortError") {
-                        console.error(
-                            "[Screen] ❌ Failed to resume video:",
-                            err,
-                        );
-                    }
-                });
-            }
+            if (!videoElement.paused) videoElement.pause();
+        } else if (videoElement.paused && videoElement.readyState >= 2) {
+            videoElement.play().catch((err) => {
+                if (err.name !== "AbortError") {
+                    console.error("[Screen] Failed to resume video:", err);
+                }
+            });
         }
     });
 
-    $effect(() => {
-        if (
-            !videoElement ||
-            blobUrls.length === 0 ||
-            currentVideoIndex >= blobUrls.length
-        ) {
-            return;
-        }
-
-        const targetUrl = blobUrls[currentVideoIndex];
-
-        if (videoElement.src === targetUrl) {
-            if (videoElement.paused && $opacity > 0) {
-                videoElement.play().catch((err) => {
-                    if (err.name !== "AbortError") {
-                        console.error("[Screen] ❌ Failed to play video:", err);
-                    }
-                });
-            }
-            return;
-        }
-
-        videoElement.pause();
-        videoElement.src = targetUrl;
-
-        const handleCanPlay = () => {
-            if (!videoElement) return;
-
-            if ($opacity > 0) {
-                videoElement
-                    .play()
-                    .then(() => {
-                        // console.log(
-                        //     `[Screen] ✅ Video playing, index: ${currentVideoIndex}`,
-                        // );
-                    })
-                    .catch((err) => {
-                        if (err.name !== "AbortError") {
-                            console.error(
-                                "[Screen] ❌ Failed to play video:",
-                                err,
-                            );
-                        }
-                    });
-            }
-        };
-
-        const handlePlay = () => {
-            if (!videoElement) return;
-
-            if ($opacity === 0 || videoElement.currentTime > 0.5) return;
-
-            if (
-                playlistUUID &&
-                playlistContents[currentVideoIndex] &&
-                $dashboardUUID
-            ) {
-                const currentContent = playlistContents[currentVideoIndex];
-
-                logger.logVideoStart($dashboardUUID, {
-                    playlistUUID,
-                    fileUUID: currentContent.fileUUID,
-                    videoIndex: currentVideoIndex,
-                    screenUUID: uuid,
-                });
-            }
-        };
-
-        const handleError = (e: Event) => {
-            if (!videoElement) return;
-
-            if (
-                playlistUUID &&
-                playlistContents[currentVideoIndex] &&
-                $dashboardUUID
-            ) {
-                const currentContent = playlistContents[currentVideoIndex];
-                const error = videoElement.error;
-                const errorMessage = error?.message || "Unknown video error";
-                const errorCode = error?.code || "UNKNOWN";
-
-                logger.logVideoError($dashboardUUID, {
-                    playlistUUID,
-                    fileUUID: currentContent.fileUUID,
-                    error: errorMessage,
-                    errorCode: errorCode.toString(),
-                    screenUUID: uuid,
-                });
-            }
-        };
-
-        const handleSeeked = () => {
-            if (!videoElement) return;
-
-            if ($opacity === 0) return;
-
-            if (
-                playlistUUID &&
-                playlistContents[currentVideoIndex] &&
-                $dashboardUUID
-            ) {
-                const currentContent = playlistContents[currentVideoIndex];
-
-                logger.logVideoStart($dashboardUUID, {
-                    playlistUUID,
-                    fileUUID: currentContent.fileUUID,
-                    videoIndex: currentVideoIndex,
-                    screenUUID: uuid,
-                });
-            }
-        };
-
-        videoElement.addEventListener("canplay", handleCanPlay, { once: true });
-        videoElement.addEventListener("play", handlePlay);
-        videoElement.addEventListener("error", handleError);
-        videoElement.addEventListener("seeked", handleSeeked);
-
-        videoElement.load();
-
-        return () => {
-            if (!videoElement) return;
-            videoElement.removeEventListener("canplay", handleCanPlay);
-            videoElement.removeEventListener("play", handlePlay);
-            videoElement.removeEventListener("error", handleError);
-        };
-    });
 
     onDestroy(() => {
         blobUrls.forEach((url) => URL.revokeObjectURL(url));
-        if (playlistCheckInterval) {
-            clearInterval(playlistCheckInterval);
-        }
+        if (petrolVideoUrl) URL.revokeObjectURL(petrolVideoUrl);
+        if (playlistCheckInterval) clearInterval(playlistCheckInterval);
     });
 </script>
 
 <div
     class="screen"
-    style="width: {width}px; height: {height}px; top: {positionY}px; left: {positionX}px;"
+    style={screenStyle}
 >
     {#if isLoadingPlaylist && blobUrls.length === 0}
         <Loader />
@@ -401,21 +362,28 @@
                 }
             }}
         />
-    {:else if blobUrls.length > 0}
-        {#key currentVideoIndex}
-            <video
-                bind:this={videoElement}
-                class="screen-video"
-                autoplay
-                muted
-                playsinline
-                preload="auto"
-                loop={blobUrls.length === 1}
-                onended={handleVideoEnded}
-                out:fade={{ duration: 500 }}
-                in:fade={{ delay: 500, duration: 500 }}
-            ></video>
-        {/key}
+    {:else if blobUrls.length > 0 || petrolVideoUrl}
+        <video
+            bind:this={videoElement}
+            class="screen-video"
+            src={isPetrolVideoPlaying && petrolVideoUrl
+                ? petrolVideoUrl
+                : blobUrls[currentVideoIndex]}
+            autoplay
+            muted
+            playsinline
+            preload="auto"
+            loop={(blobUrls.length === 1 && !petrolVideoUrl) || (isPetrolVideoPlaying && !petrolVideoUrl)}
+            onended={handleVideoEnded}
+            onplay={handleVideoPlay}
+            onerror={handleVideoError}
+        ></video>
+        {#if isPetrolVideoPlaying && screenSettings.length > 0}
+            <GasStationWidget
+                boardType={BoardTypesEnum.PETROL_STATION}
+                settings={screenSettings}
+            />
+        {/if}
     {:else if !hasWidgets}
         <SplashLogo />
     {/if}

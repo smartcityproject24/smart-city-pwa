@@ -11,3 +11,27 @@ export interface SolutionResponse {
     solution: Block;
 }
 
+export interface SettingsItem {
+    settingType: string;
+    settingName: string;
+    settingValue: string;
+}
+
+export interface PlaylistsItem {
+    playlistUUID: string;
+    playlistName: string;
+    videos: {
+        fileType: string;
+        fileUUID: string;
+        fullScreen: boolean;
+    }[];
+}
+
+export interface SettingsResponse {
+    deviceName: string;
+    deviceType: string;
+    settings: SettingsItem[];
+    playlists: PlaylistsItem[];
+    videos: unknown[];
+    widgets: unknown[];
+}
