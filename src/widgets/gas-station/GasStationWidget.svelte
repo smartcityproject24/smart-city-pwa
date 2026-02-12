@@ -43,11 +43,10 @@
 {#if isPartnerNeft}
     <div
         style:position="absolute"
-        
-        style:top="25%"
-        style:left={isPartnerNeftDouble ? "0%" : "50%"}
+        style:top={isPartnerNeftDouble ? "30%" : "25%"}
+        style:left={isPartnerNeftDouble ? "15%" : "50%"}
         style:width={isPartnerNeftDouble ? "100%" : "50%"}
-        style:height="58%"
+        style:height={isPartnerNeftDouble ? "50%" : "58%"}
     >
         {#each data || [] as value, index (value.settingType)}
             {#if animationKey > 0}

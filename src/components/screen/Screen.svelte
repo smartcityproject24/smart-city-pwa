@@ -45,6 +45,8 @@
 
     let videoElement = $state<HTMLVideoElement | undefined>(undefined);
     let videoElement2 = $state<HTMLVideoElement | undefined>(undefined);
+    let edgeVideoElement = $state<HTMLVideoElement | undefined>(undefined);
+    let edgeVideoElement2 = $state<HTMLVideoElement | undefined>(undefined);
     let currentVideoIndex = $state(0);
     let playlistContents = $state<PlaylistContent[]>([]);
     let blobUrls = $state<string[]>([]);
@@ -362,6 +364,8 @@
         if ($opacity === 0) {
             if (!videoElement.paused) videoElement.pause();
             if (videoElement2 && !videoElement2.paused) videoElement2.pause();
+            if (edgeVideoElement && !edgeVideoElement.paused) edgeVideoElement.pause();
+            if (edgeVideoElement2 && !edgeVideoElement2.paused) edgeVideoElement2.pause();
         } else {
             if (videoElement.paused && videoElement.readyState >= 2) {
                 videoElement.play().catch((err) => {
@@ -374,6 +378,20 @@
                 videoElement2.play().catch((err) => {
                     if (err.name !== "AbortError") {
                         console.error("[Screen] Failed to resume video 2:", err);
+                    }
+                });
+            }
+            if (isDoubleScreen && edgeVideoElement && edgeVideoElement.paused && edgeVideoElement.readyState >= 2) {
+                edgeVideoElement.play().catch((err) => {
+                    if (err.name !== "AbortError") {
+                        console.error("[Screen] Failed to resume edge video:", err);
+                    }
+                });
+            }
+            if (isDoubleScreen && edgeVideoElement2 && edgeVideoElement2.paused && edgeVideoElement2.readyState >= 2) {
+                edgeVideoElement2.play().catch((err) => {
+                    if (err.name !== "AbortError") {
+                        console.error("[Screen] Failed to resume edge video 2:", err);
                     }
                 });
             }
@@ -423,6 +441,16 @@
                         onplay={() => handleVideoPlay(false)}
                         onerror={handleVideoError}
                     ></video>
+                    <video
+                        bind:this={edgeVideoElement}
+                        class="edge-video"
+                        src="/petrol-station/pn_edge.mp4"
+                        autoplay
+                        muted
+                        playsinline
+                        preload="auto"
+                        loop
+                    ></video>
                     {#if isPetrolVideoPlaying && screenSettings.length > 0}
                         <GasStationWidget
                             boardType={BoardTypesEnum.PARTNER_NEFT_STATION_DOUBLE}
@@ -445,6 +473,16 @@
                         onended={() => handleVideoEnded(true)}
                         onplay={() => handleVideoPlay(true)}
                         onerror={handleVideoError}
+                    ></video>
+                    <video
+                        bind:this={edgeVideoElement2}
+                        class="edge-video"
+                        src="/petrol-station/pn_edge.mp4"
+                        autoplay
+                        muted
+                        playsinline
+                        preload="auto"
+                        loop
                     ></video>
                     {#if isPetrolVideoPlaying && screenSettings.length > 0}
                         <GasStationWidget
@@ -519,5 +557,16 @@
     .screen-video-right {
         width: 100%;
         height: 100%;
+    }
+
+    .edge-video {
+        position: absolute;
+        top: 0;
+        right: 0;
+        height: 100%;
+        width: auto;
+        object-fit: cover;
+        pointer-events: none;
+        z-index: 1;
     }
 </style>
