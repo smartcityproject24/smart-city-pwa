@@ -31,6 +31,10 @@
         [BoardTypesEnum.PARTNER_NEFT_STATION_DOUBLE, BoardTypesEnum.PARTNER_NEFT_STATION].includes(boardType)
     );
 
+    const isPartnerNeftDouble = $derived(
+        boardType === BoardTypesEnum.PARTNER_NEFT_STATION_DOUBLE
+    );
+
     const isPetrolStation = $derived(
         [BoardTypesEnum.PETROL_STATION_DOUBLE, BoardTypesEnum.PETROL_STATION].includes(boardType)
     );
@@ -39,9 +43,10 @@
 {#if isPartnerNeft}
     <div
         style:position="absolute"
+        
         style:top="25%"
-        style:left="50%"
-        style:width="50%"
+        style:left={isPartnerNeftDouble ? "0%" : "50%"}
+        style:width={isPartnerNeftDouble ? "100%" : "50%"}
         style:height="58%"
     >
         {#each data || [] as value, index (value.settingType)}
