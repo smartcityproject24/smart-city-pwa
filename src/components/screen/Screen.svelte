@@ -5,7 +5,7 @@
 
     import { BlockRenderer } from "@components/block-renderer";
     import type { Block, BrightnessContext, UserContext } from "@core";
-    import type { ApiReadyContext } from "@core/types";
+    import type { ApiReadyContext, PageContext } from "@core/types";
     import type { LoggingContext } from "@core";
     import { playlistService } from "@api/services/playlist.service";
     import { fileService } from "@api/services/file.service";
@@ -41,8 +41,12 @@
     const { opacity } = getContext<BrightnessContext>("brightness");
     const { dashboardUUID } = getContext<UserContext>("user");
     const { logger } = getContext<LoggingContext>("logging");
+    const { pageInfo } = getContext<PageContext>("page");
 
     let videoElement = $state<HTMLVideoElement | undefined>(undefined);
+    let videoElement2 = $state<HTMLVideoElement | undefined>(undefined);
+    let edgeVideoElement = $state<HTMLVideoElement | undefined>(undefined);
+    let edgeVideoElement2 = $state<HTMLVideoElement | undefined>(undefined);
     let currentVideoIndex = $state(0);
     let playlistContents = $state<PlaylistContent[]>([]);
     let blobUrls = $state<string[]>([]);
@@ -62,6 +66,8 @@
         screenSettings.find((s) => s.settingType === "PETROL_STATION_VIDEO")
     );
     const petrolVideoFileUUID = $derived(petrolVideoSetting?.settingValue);
+    const dashboardType = $derived($pageInfo?.dashboardType);
+    const isDoubleScreen = $derived(dashboardType === "PARTNER_NEFT_STATION_DOUBLE");
     const isFullscreen = $derived(width == null || height == null);
     const screenStyle = $derived(
         isFullscreen
@@ -81,9 +87,24 @@
         });
     };
 
-    const handleVideoEnded = () => {
+    const handleVideoEnded = (isSecondVideo = false) => {
         if (blobUrls.length === 0 && !petrolVideoUrl) {
             return;
+        }
+
+        // Для двойного экрана синхронизируем оба видео
+        if (isDoubleScreen && videoElement && videoElement2) {
+            if (!isSecondVideo) {
+                // Если закончилось первое видео, синхронизируем второе
+                if (videoElement2.currentTime < videoElement2.duration - 0.1) {
+                    videoElement2.currentTime = videoElement.currentTime;
+                }
+            } else {
+                // Если закончилось второе видео, синхронизируем первое
+                if (videoElement.currentTime < videoElement.duration - 0.1) {
+                    videoElement.currentTime = videoElement2.currentTime;
+                }
+            }
         }
 
         if (isPetrolVideoPlaying) {
@@ -104,8 +125,21 @@
         }
     };
 
-    const handleVideoPlay = () => {
-        if (!videoElement || $opacity === 0 || videoElement.currentTime > 0.5) return;
+    const handleVideoPlay = (isSecondVideo = false) => {
+        const element = isSecondVideo ? videoElement2 : videoElement;
+        if (!element || $opacity === 0 || element.currentTime > 0.5) return;
+        
+        // Для двойного экрана синхронизируем оба видео при старте
+        if (isDoubleScreen && videoElement && videoElement2) {
+            if (!isSecondVideo && videoElement2.paused) {
+                videoElement2.currentTime = videoElement.currentTime;
+                videoElement2.play().catch(() => {});
+            } else if (isSecondVideo && videoElement.paused) {
+                videoElement.currentTime = videoElement2.currentTime;
+                videoElement.play().catch(() => {});
+            }
+        }
+
         if (
             !isPetrolVideoPlaying &&
             playlistUUID &&
@@ -329,12 +363,38 @@
         if (!videoElement) return;
         if ($opacity === 0) {
             if (!videoElement.paused) videoElement.pause();
-        } else if (videoElement.paused && videoElement.readyState >= 2) {
-            videoElement.play().catch((err) => {
-                if (err.name !== "AbortError") {
-                    console.error("[Screen] Failed to resume video:", err);
-                }
-            });
+            if (videoElement2 && !videoElement2.paused) videoElement2.pause();
+            if (edgeVideoElement && !edgeVideoElement.paused) edgeVideoElement.pause();
+            if (edgeVideoElement2 && !edgeVideoElement2.paused) edgeVideoElement2.pause();
+        } else {
+            if (videoElement.paused && videoElement.readyState >= 2) {
+                videoElement.play().catch((err) => {
+                    if (err.name !== "AbortError") {
+                        console.error("[Screen] Failed to resume video:", err);
+                    }
+                });
+            }
+            if (isDoubleScreen && videoElement2 && videoElement2.paused && videoElement2.readyState >= 2) {
+                videoElement2.play().catch((err) => {
+                    if (err.name !== "AbortError") {
+                        console.error("[Screen] Failed to resume video 2:", err);
+                    }
+                });
+            }
+            if (isDoubleScreen && edgeVideoElement && edgeVideoElement.paused && edgeVideoElement.readyState >= 2) {
+                edgeVideoElement.play().catch((err) => {
+                    if (err.name !== "AbortError") {
+                        console.error("[Screen] Failed to resume edge video:", err);
+                    }
+                });
+            }
+            if (isDoubleScreen && edgeVideoElement2 && edgeVideoElement2.paused && edgeVideoElement2.readyState >= 2) {
+                edgeVideoElement2.play().catch((err) => {
+                    if (err.name !== "AbortError") {
+                        console.error("[Screen] Failed to resume edge video 2:", err);
+                    }
+                });
+            }
         }
     });
 
@@ -363,26 +423,97 @@
             }}
         />
     {:else if blobUrls.length > 0 || petrolVideoUrl}
-        <video
-            bind:this={videoElement}
-            class="screen-video"
-            src={isPetrolVideoPlaying && petrolVideoUrl
-                ? petrolVideoUrl
-                : blobUrls[currentVideoIndex]}
-            autoplay
-            muted
-            playsinline
-            preload="auto"
-            loop={(blobUrls.length === 1 && !petrolVideoUrl) || (isPetrolVideoPlaying && !petrolVideoUrl)}
-            onended={handleVideoEnded}
-            onplay={handleVideoPlay}
-            onerror={handleVideoError}
-        ></video>
-        {#if isPetrolVideoPlaying && screenSettings.length > 0}
-            <GasStationWidget
-                boardType={BoardTypesEnum.PETROL_STATION}
-                settings={screenSettings}
-            />
+        {#if isDoubleScreen}
+            <div class="double-screen-container">
+                <div class="video-wrapper">
+                    <video
+                        bind:this={videoElement}
+                        class="screen-video screen-video-left"
+                        src={isPetrolVideoPlaying && petrolVideoUrl
+                            ? petrolVideoUrl
+                            : blobUrls[currentVideoIndex]}
+                        autoplay
+                        muted
+                        playsinline
+                        preload="auto"
+                        loop={(blobUrls.length === 1 && !petrolVideoUrl) || (isPetrolVideoPlaying && !petrolVideoUrl)}
+                        onended={() => handleVideoEnded(false)}
+                        onplay={() => handleVideoPlay(false)}
+                        onerror={handleVideoError}
+                    ></video>
+                    <video
+                        bind:this={edgeVideoElement}
+                        class="edge-video"
+                        src="/petrol-station/pn_edge.mp4"
+                        autoplay
+                        muted
+                        playsinline
+                        preload="auto"
+                        loop
+                    ></video>
+                    {#if isPetrolVideoPlaying && screenSettings.length > 0}
+                        <GasStationWidget
+                            boardType={BoardTypesEnum.PARTNER_NEFT_STATION_DOUBLE}
+                            settings={screenSettings}
+                        />
+                    {/if}
+                </div>
+                <div class="video-wrapper">
+                    <video
+                        bind:this={videoElement2}
+                        class="screen-video screen-video-right"
+                        src={isPetrolVideoPlaying && petrolVideoUrl
+                            ? petrolVideoUrl
+                            : blobUrls[currentVideoIndex]}
+                        autoplay
+                        muted
+                        playsinline
+                        preload="auto"
+                        loop={(blobUrls.length === 1 && !petrolVideoUrl) || (isPetrolVideoPlaying && !petrolVideoUrl)}
+                        onended={() => handleVideoEnded(true)}
+                        onplay={() => handleVideoPlay(true)}
+                        onerror={handleVideoError}
+                    ></video>
+                    <video
+                        bind:this={edgeVideoElement2}
+                        class="edge-video"
+                        src="/petrol-station/pn_edge.mp4"
+                        autoplay
+                        muted
+                        playsinline
+                        preload="auto"
+                        loop
+                    ></video>
+                    {#if isPetrolVideoPlaying && screenSettings.length > 0}
+                        <GasStationWidget
+                            boardType={BoardTypesEnum.PARTNER_NEFT_STATION_DOUBLE}
+                            settings={screenSettings}
+                        />
+                    {/if}
+                </div>
+            </div>
+        {:else}
+            <video
+                bind:this={videoElement}
+                class="screen-video"
+                src={isPetrolVideoPlaying && petrolVideoUrl
+                    ? petrolVideoUrl
+                    : blobUrls[currentVideoIndex]}
+                autoplay
+                muted
+                playsinline
+                preload="auto"
+                loop={(blobUrls.length === 1 && !petrolVideoUrl) || (isPetrolVideoPlaying && !petrolVideoUrl)}
+                onended={() => handleVideoEnded(false)}
+                onplay={() => handleVideoPlay(false)}
+                onerror={handleVideoError}
+            ></video>
+            {#if isPetrolVideoPlaying && screenSettings.length > 0}
+                <GasStationWidget
+                    boardType={BoardTypesEnum.PETROL_STATION}
+                    settings={screenSettings}
+                />
+            {/if}
         {/if}
     {:else if !hasWidgets}
         <SplashLogo />
@@ -402,5 +533,40 @@
         width: 100%;
         object-fit: fill;
         pointer-events: none;
+    }
+
+    .double-screen-container {
+        display: flex;
+        width: 100%;
+        height: 100%;
+        position: relative;
+    }
+
+    .video-wrapper {
+        position: relative;
+        width: 50%;
+        height: 100%;
+        overflow: hidden;
+    }
+
+    .screen-video-left {
+        width: 100%;
+        height: 100%;
+    }
+
+    .screen-video-right {
+        width: 100%;
+        height: 100%;
+    }
+
+    .edge-video {
+        position: absolute;
+        top: 0;
+        right: 0;
+        height: 100%;
+        width: auto;
+        object-fit: cover;
+        pointer-events: none;
+        z-index: 1;
     }
 </style>
