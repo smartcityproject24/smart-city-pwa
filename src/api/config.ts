@@ -1,4 +1,4 @@
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://api.foel.online";
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://foel.shop:443";
 const API_BASE_V1_URL = `${BASE_URL}/smart-city/api/v1`;
 
 export const API_CONFIG = {

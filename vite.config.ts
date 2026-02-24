@@ -36,26 +36,26 @@ export default defineConfig({
     server: {
         port: 17022,
         https: {
-            key: fs.readFileSync(path.resolve(__dirname, 'ssl/RGB.KG.key')),
-            cert: fs.readFileSync(path.resolve(__dirname, 'ssl/RGB_KG.crt'))
+            key: fs.readFileSync(path.resolve(__dirname, 'ssl/FOEL.SHOP.key')),
+            cert: fs.readFileSync(path.resolve(__dirname, 'ssl/FOEL.SHOP.crt'))
         },
         allowedHosts: [
             'localhost',
             '127.0.0.1',
-            'rgb.kg'
+            'foel.shop'
         ]
     },
     preview: {
         port: 17022,
         https: {
-            key: fs.readFileSync(path.resolve(__dirname, 'ssl/RGB.KG.key')),
-            cert: fs.readFileSync(path.resolve(__dirname, 'ssl/RGB_KG.crt'))
+            key: fs.readFileSync(path.resolve(__dirname, 'ssl/FOEL.SHOP.key')),
+            cert: fs.readFileSync(path.resolve(__dirname, 'ssl/FOEL.SHOP.crt'))
         },
         host: true,
         allowedHosts: [
             'localhost',
             '127.0.0.1',
-            'rgb.kg'
+            'foel.shop'
         ],
     },
 });
