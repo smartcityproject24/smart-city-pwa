@@ -16,7 +16,7 @@ node('master') {
             sh "chmod -R 777 /var/lib/jenkins/workspace/Front_Pwa_test/node_modules/.vite-temp 2>/dev/null || true"
         }
         stage ('Start service') {
-            sh "systemctl restart smart_pwa_test.service"
+            sh "sudo systemctl restart smart_pwa_test.service"
         }
     } catch (Exception e) {
         currentBuild.result = "FAILURE"
