@@ -26,6 +26,7 @@ export type Options = {
         autoFullscreen?: boolean;
         forceFullscreenOnAndroid?: boolean;
         fullscreenReturnDelay?: number;
+        fullscreenInBrowser?: boolean;
     };
     pwa?: {
         update?: import("./pwa/types").PWAUpdateConfig;
