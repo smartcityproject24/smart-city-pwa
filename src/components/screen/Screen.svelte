@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onDestroy } from "svelte";
+    import { onDestroy, tick } from "svelte";
     import { getContext } from "svelte";
     import { fade } from "svelte/transition";
 
@@ -16,6 +16,7 @@
     import { clearFilesCache } from "@core/pwa/cache";
     import { SplashLogo } from "@components/ui";
     import { GasStationWidget, BoardTypesEnum } from "@/widgets/gas-station";
+    import type { PlaylistsItem } from "@api/types/dashboard.types";
 
     let {
         blocks = [],
@@ -34,7 +35,10 @@
         positionY?: number;
         playlistUUID?: string;
         uuid?: string;
-        payload?: { settings?: { settingType: string; settingName: string; settingValue: string }[] };
+        payload?: {
+            settings?: { settingType: string; settingName: string; settingValue: string }[];
+            playlists?: PlaylistsItem[];
+        };
     } = $props();
 
     const { isReady } = getContext<ApiReadyContext>("api");
@@ -50,10 +54,17 @@
     let currentVideoIndex = $state(0);
     let playlistContents = $state<PlaylistContent[]>([]);
     let blobUrls = $state<string[]>([]);
+    let currentVideoIndexRight = $state(0);
+    let playlistContentsRight = $state<PlaylistContent[]>([]);
+    let blobUrlsRight = $state<string[]>([]);
     let petrolVideoUrl = $state<string | null>(null);
     let isPetrolVideoPlaying = $state(false);
+    let isPetrolVideoPlayingLeft = $state(false);
+    let isPetrolVideoPlayingRight = $state(false);
     let isLoadingPlaylist = $state(false);
+    let isLoadingPlaylistRight = $state(false);
     let error = $state<ApiError | null>(null);
+    let errorRight = $state<ApiError | null>(null);
     let playlistCheckInterval: ReturnType<typeof setInterval> | null = null;
 
     // Check if there are any widget blocks
@@ -68,6 +79,16 @@
     const petrolVideoFileUUID = $derived(petrolVideoSetting?.settingValue);
     const dashboardType = $derived($pageInfo?.dashboardType);
     const isDoubleScreen = $derived(dashboardType === "PARTNER_NEFT_STATION_DOUBLE");
+    const payloadPlaylists = $derived(payload?.playlists ?? []);
+    const isDoubleWithTwoPlaylists = $derived(
+        isDoubleScreen && payloadPlaylists.length >= 2
+    );
+    const leftPlaylistUUID = $derived(
+        isDoubleWithTwoPlaylists ? payloadPlaylists[0]?.playlistUUID : playlistUUID
+    );
+    const rightPlaylistUUID = $derived(
+        isDoubleWithTwoPlaylists ? payloadPlaylists[1]?.playlistUUID : undefined
+    );
     const isFullscreen = $derived(width == null || height == null);
     const screenStyle = $derived(
         isFullscreen
@@ -88,49 +109,85 @@
     };
 
     const handleVideoEnded = (isSecondVideo = false) => {
-        if (blobUrls.length === 0 && !petrolVideoUrl) {
-            return;
-        }
-
-        // Для двойного экрана синхронизируем оба видео
-        if (isDoubleScreen && videoElement && videoElement2) {
-            if (!isSecondVideo) {
-                // Если закончилось первое видео, синхронизируем второе
-                if (videoElement2.currentTime < videoElement2.duration - 0.1) {
-                    videoElement2.currentTime = videoElement.currentTime;
+        if (isDoubleWithTwoPlaylists) {
+            if (isSecondVideo) {
+                if (isPetrolVideoPlayingRight) {
+                    isPetrolVideoPlayingRight = false;
+                    currentVideoIndexRight = 0;
+                    tick().then(() => videoElement2?.play().catch(() => {}));
+                    return;
+                }
+                if (blobUrlsRight.length === 0) return;
+                if (currentVideoIndexRight < blobUrlsRight.length - 1) {
+                    currentVideoIndexRight++;
+                    tick().then(() => videoElement2?.play().catch(() => {}));
+                } else if (petrolVideoUrl) {
+                    isPetrolVideoPlayingRight = true;
+                    tick().then(() => videoElement2?.play().catch(() => {}));
+                } else {
+                    currentVideoIndexRight = 0;
+                    tick().then(() => videoElement2?.play().catch(() => {}));
                 }
             } else {
-                // Если закончилось второе видео, синхронизируем первое
-                if (videoElement.currentTime < videoElement.duration - 0.1) {
-                    videoElement.currentTime = videoElement2.currentTime;
+                if (isPetrolVideoPlayingLeft) {
+                    isPetrolVideoPlayingLeft = false;
+                    currentVideoIndex = 0;
+                    tick().then(() => videoElement?.play().catch(() => {}));
+                    return;
+                }
+                if (blobUrls.length === 0 && !petrolVideoUrl) return;
+                if (currentVideoIndex < blobUrls.length - 1) {
+                    currentVideoIndex++;
+                    tick().then(() => videoElement?.play().catch(() => {}));
+                } else if (petrolVideoUrl) {
+                    isPetrolVideoPlayingLeft = true;
+                    tick().then(() => videoElement?.play().catch(() => {}));
+                } else {
+                    currentVideoIndex = 0;
+                    tick().then(() => videoElement?.play().catch(() => {}));
                 }
             }
+            return;
         }
 
         if (isPetrolVideoPlaying) {
             isPetrolVideoPlaying = false;
             currentVideoIndex = 0;
+            tick().then(() => {
+                videoElement?.play().catch(() => {});
+                videoElement2?.play().catch(() => {});
+            });
             return;
+        }
+
+        if (blobUrls.length === 0 && !petrolVideoUrl) return;
+
+        if (videoElement && videoElement2) {
+            if (!isSecondVideo && videoElement2.currentTime < videoElement2.duration - 0.1) {
+                videoElement2.currentTime = videoElement.currentTime;
+            } else if (isSecondVideo && videoElement.currentTime < videoElement.duration - 0.1) {
+                videoElement.currentTime = videoElement2.currentTime;
+            }
         }
 
         if (currentVideoIndex < blobUrls.length - 1) {
             currentVideoIndex++;
-            return;
-        }
-
-        if (petrolVideoUrl) {
+        } else if (petrolVideoUrl) {
             isPetrolVideoPlaying = true;
         } else {
             currentVideoIndex = 0;
         }
+        tick().then(() => {
+            videoElement?.play().catch(() => {});
+            if (videoElement2) videoElement2.play().catch(() => {});
+        });
     };
 
     const handleVideoPlay = (isSecondVideo = false) => {
         const element = isSecondVideo ? videoElement2 : videoElement;
         if (!element || $opacity === 0 || element.currentTime > 0.5) return;
-        
-        // Для двойного экрана синхронизируем оба видео при старте
-        if (isDoubleScreen && videoElement && videoElement2) {
+
+        if (!isDoubleWithTwoPlaylists && isDoubleScreen && videoElement && videoElement2) {
             if (!isSecondVideo && videoElement2.paused) {
                 videoElement2.currentTime = videoElement.currentTime;
                 videoElement2.play().catch(() => {});
@@ -140,15 +197,23 @@
             }
         }
 
-        if (
-            !isPetrolVideoPlaying &&
-            playlistUUID &&
-            playlistContents[currentVideoIndex] &&
-            $dashboardUUID
-        ) {
+        const showingPetrol = isDoubleWithTwoPlaylists
+            ? (isSecondVideo ? isPetrolVideoPlayingRight : isPetrolVideoPlayingLeft)
+            : isPetrolVideoPlaying;
+        if (showingPetrol || !$dashboardUUID) return;
+
+        if (isSecondVideo && isDoubleWithTwoPlaylists && rightPlaylistUUID && playlistContentsRight[currentVideoIndexRight]) {
+            const currentContent = playlistContentsRight[currentVideoIndexRight];
+            logger.logVideoStart($dashboardUUID, {
+                playlistUUID: rightPlaylistUUID,
+                fileUUID: currentContent.fileUUID,
+                videoIndex: currentVideoIndexRight,
+                screenUUID: uuid,
+            });
+        } else if (!isSecondVideo && (leftPlaylistUUID ?? playlistUUID) && playlistContents[currentVideoIndex]) {
             const currentContent = playlistContents[currentVideoIndex];
             logger.logVideoStart($dashboardUUID, {
-                playlistUUID,
+                playlistUUID: leftPlaylistUUID ?? playlistUUID ?? "",
                 fileUUID: currentContent.fileUUID,
                 videoIndex: currentVideoIndex,
                 screenUUID: uuid,
@@ -160,17 +225,37 @@
         if (!videoElement) return;
         if (
             !isPetrolVideoPlaying &&
-            playlistUUID &&
+            (leftPlaylistUUID ?? playlistUUID) &&
             playlistContents[currentVideoIndex] &&
             $dashboardUUID
         ) {
             const currentContent = playlistContents[currentVideoIndex];
-            const error = videoElement.error;
+            const err = videoElement.error;
             logger.logVideoError($dashboardUUID, {
-                playlistUUID,
+                playlistUUID: leftPlaylistUUID ?? playlistUUID ?? "",
                 fileUUID: currentContent.fileUUID,
-                error: error?.message || "Unknown video error",
-                errorCode: error?.code?.toString() || "UNKNOWN",
+                error: err?.message || "Unknown video error",
+                errorCode: err?.code?.toString() || "UNKNOWN",
+                screenUUID: uuid,
+            });
+        }
+    };
+
+    const handleVideoErrorRight = () => {
+        if (!videoElement2 || !isDoubleWithTwoPlaylists) return;
+        if (
+            !isPetrolVideoPlaying &&
+            rightPlaylistUUID &&
+            playlistContentsRight[currentVideoIndexRight] &&
+            $dashboardUUID
+        ) {
+            const currentContent = playlistContentsRight[currentVideoIndexRight];
+            const err = videoElement2.error;
+            logger.logVideoError($dashboardUUID, {
+                playlistUUID: rightPlaylistUUID,
+                fileUUID: currentContent.fileUUID,
+                error: err?.message || "Unknown video error",
+                errorCode: err?.code?.toString() || "UNKNOWN",
                 screenUUID: uuid,
             });
         }
@@ -265,6 +350,85 @@
         }
     };
 
+    const loadPlaylistRight = async (uuid: string) => {
+        if (!uuid || !$isReady) return;
+
+        isLoadingPlaylistRight = true;
+        errorRight = null;
+
+        try {
+            const contents = await playlistService.getContents(uuid);
+
+            if (!contents || contents.length === 0) {
+                blobUrlsRight.forEach((url) => URL.revokeObjectURL(url));
+                blobUrlsRight = [];
+                playlistContentsRight = [];
+                currentVideoIndexRight = 0;
+                if (videoElement2) {
+                    videoElement2.pause();
+                    videoElement2.removeAttribute("src");
+                    videoElement2.load();
+                }
+                return;
+            }
+
+            const blobPromises = contents.map((content) =>
+                fileService.getFileBlob(content.fileUUID).catch((err) => {
+                    if (!navigator.onLine) {
+                        console.warn(
+                            `[Screen] File ${content.fileUUID} not available offline, not in cache`,
+                        );
+                    }
+                    return err;
+                }),
+            );
+
+            const blobs = await Promise.all(blobPromises);
+
+            blobUrlsRight.forEach((url) => URL.revokeObjectURL(url));
+
+            const validContents: PlaylistContent[] = [];
+            const validBlobUrls: string[] = [];
+
+            blobs.forEach((blob, index) => {
+                if (blob && blob instanceof Blob) {
+                    validContents.push(contents[index]);
+                    validBlobUrls.push(URL.createObjectURL(blob));
+                }
+            });
+
+            if (validContents.length === 0) {
+                blobUrlsRight = [];
+                playlistContentsRight = [];
+                currentVideoIndexRight = 0;
+                if (videoElement2) {
+                    videoElement2.pause();
+                    videoElement2.removeAttribute("src");
+                    videoElement2.load();
+                }
+                return;
+            }
+
+            playlistContentsRight = validContents;
+            blobUrlsRight = validBlobUrls;
+            currentVideoIndexRight = 0;
+        } catch (err) {
+            if (err instanceof ApiError) {
+                errorRight = err;
+            } else {
+                errorRight = new ApiError({
+                    code: 0,
+                    message:
+                        err instanceof Error ? err.message : "unknown_error",
+                    error: "Unknown",
+                    detailedMessages: [],
+                });
+            }
+        } finally {
+            isLoadingPlaylistRight = false;
+        }
+    };
+
     const loadPetrolVideo = async (fileUUID: string) => {
         if (!fileUUID || !$isReady) return;
         try {
@@ -294,12 +458,26 @@
     };
 
     $effect(() => {
-        if (playlistUUID && $isReady) {
-            loadPlaylist(playlistUUID);
-        } else if (!playlistUUID) {
-            blobUrls.forEach((url) => URL.revokeObjectURL(url));
-            blobUrls = [];
-            playlistContents = [];
+        if (isDoubleWithTwoPlaylists) {
+            if (!leftPlaylistUUID && !rightPlaylistUUID) {
+                blobUrls.forEach((url) => URL.revokeObjectURL(url));
+                blobUrls = [];
+                playlistContents = [];
+                blobUrlsRight.forEach((url) => URL.revokeObjectURL(url));
+                blobUrlsRight = [];
+                playlistContentsRight = [];
+                return;
+            }
+            if ($isReady && leftPlaylistUUID) loadPlaylist(leftPlaylistUUID);
+            if ($isReady && rightPlaylistUUID) loadPlaylistRight(rightPlaylistUUID);
+        } else {
+            if (playlistUUID && $isReady) {
+                loadPlaylist(playlistUUID);
+            } else if (!playlistUUID) {
+                blobUrls.forEach((url) => URL.revokeObjectURL(url));
+                blobUrls = [];
+                playlistContents = [];
+            }
         }
     });
 
@@ -310,7 +488,8 @@
     });
 
     $effect(() => {
-        if (!playlistUUID || !$isReady) {
+        const leftUuid = isDoubleWithTwoPlaylists ? leftPlaylistUUID : playlistUUID;
+        if (!leftUuid || !$isReady) {
             if (playlistCheckInterval) {
                 clearInterval(playlistCheckInterval);
                 playlistCheckInterval = null;
@@ -327,26 +506,29 @@
         }
 
         playlistCheckInterval = setInterval(async () => {
-            if (!$isReady) {
-                return;
-            }
+            if (!$isReady) return;
 
             try {
-                const newContents =
-                    await playlistService.getContents(playlistUUID);
-
-                if (isPlaylistChanged(playlistContents, newContents)) {
-                    if (navigator.onLine) {
-                        await clearFilesCache();
-                        console.log(
-                            "[Screen] 📋 Online: playlist updated, clearing old files cache...",
-                        );
-                    } else {
-                        console.warn(
-                            "[Screen] ⚠️ Offline: skipping cache clear, using cached files",
-                        );
+                if (isDoubleWithTwoPlaylists && leftPlaylistUUID) {
+                    const newLeft = await playlistService.getContents(leftPlaylistUUID);
+                    if (isPlaylistChanged(playlistContents, newLeft)) {
+                        if (navigator.onLine) await clearFilesCache();
+                        await loadPlaylist(leftPlaylistUUID);
                     }
-                    await loadPlaylist(playlistUUID);
+                }
+                if (isDoubleWithTwoPlaylists && rightPlaylistUUID) {
+                    const newRight = await playlistService.getContents(rightPlaylistUUID);
+                    if (isPlaylistChanged(playlistContentsRight, newRight)) {
+                        if (navigator.onLine) await clearFilesCache();
+                        await loadPlaylistRight(rightPlaylistUUID);
+                    }
+                }
+                if (!isDoubleWithTwoPlaylists && playlistUUID) {
+                    const newContents = await playlistService.getContents(playlistUUID);
+                    if (isPlaylistChanged(playlistContents, newContents)) {
+                        if (navigator.onLine) await clearFilesCache();
+                        await loadPlaylist(playlistUUID);
+                    }
                 }
             } catch (err) {}
         }, 60000);
@@ -399,8 +581,16 @@
     });
 
 
+    const hasContent = $derived(
+        blobUrls.length > 0 || blobUrlsRight.length > 0 || !!petrolVideoUrl
+    );
+    const showLoader = $derived(
+        (isLoadingPlaylist || isLoadingPlaylistRight) && !hasContent
+    );
+
     onDestroy(() => {
         blobUrls.forEach((url) => URL.revokeObjectURL(url));
+        blobUrlsRight.forEach((url) => URL.revokeObjectURL(url));
         if (petrolVideoUrl) URL.revokeObjectURL(petrolVideoUrl);
         if (playlistCheckInterval) clearInterval(playlistCheckInterval);
     });
@@ -410,33 +600,39 @@
     class="screen"
     style={screenStyle}
 >
-    {#if isLoadingPlaylist && blobUrls.length === 0}
+    {#if showLoader}
         <Loader />
-    {:else if error && blobUrls.length === 0}
+    {:else if (error ?? errorRight) && !hasContent}
         <ErrorComponent
-            {error}
+            error={error ?? errorRight!}
             onRetry={() => {
                 error = null;
-                if (playlistUUID) {
+                errorRight = null;
+                if (isDoubleWithTwoPlaylists) {
+                    if (leftPlaylistUUID) loadPlaylist(leftPlaylistUUID);
+                    if (rightPlaylistUUID) loadPlaylistRight(rightPlaylistUUID);
+                } else if (playlistUUID) {
                     loadPlaylist(playlistUUID);
                 }
             }}
         />
-    {:else if blobUrls.length > 0 || petrolVideoUrl}
+    {:else if hasContent}
         {#if isDoubleScreen}
             <div class="double-screen-container">
                 <div class="video-wrapper">
                     <video
                         bind:this={videoElement}
                         class="screen-video screen-video-left"
-                        src={isPetrolVideoPlaying && petrolVideoUrl
+                        src={(isDoubleWithTwoPlaylists ? isPetrolVideoPlayingLeft : isPetrolVideoPlaying) && petrolVideoUrl
                             ? petrolVideoUrl
-                            : blobUrls[currentVideoIndex]}
+                            : (blobUrls[currentVideoIndex] ?? "")}
                         autoplay
                         muted
                         playsinline
                         preload="auto"
-                        loop={(blobUrls.length === 1 && !petrolVideoUrl) || (isPetrolVideoPlaying && !petrolVideoUrl)}
+                        loop={((isDoubleWithTwoPlaylists ? !isPetrolVideoPlayingLeft : !isPetrolVideoPlaying)) && (isDoubleWithTwoPlaylists
+                            ? (blobUrls.length <= 1 && !petrolVideoUrl)
+                            : (blobUrls.length === 1 && !petrolVideoUrl))}
                         onended={() => handleVideoEnded(false)}
                         onplay={() => handleVideoPlay(false)}
                         onerror={handleVideoError}
@@ -451,7 +647,7 @@
                         preload="auto"
                         loop
                     ></video>
-                    {#if isPetrolVideoPlaying && screenSettings.length > 0}
+                    {#if (isDoubleWithTwoPlaylists ? isPetrolVideoPlayingLeft : isPetrolVideoPlaying) && screenSettings.length > 0}
                         <GasStationWidget
                             boardType={BoardTypesEnum.PARTNER_NEFT_STATION_DOUBLE}
                             settings={screenSettings}
@@ -462,17 +658,19 @@
                     <video
                         bind:this={videoElement2}
                         class="screen-video screen-video-right"
-                        src={isPetrolVideoPlaying && petrolVideoUrl
+                        src={(isDoubleWithTwoPlaylists ? isPetrolVideoPlayingRight : isPetrolVideoPlaying) && petrolVideoUrl
                             ? petrolVideoUrl
-                            : blobUrls[currentVideoIndex]}
+                            : (isDoubleWithTwoPlaylists ? blobUrlsRight[currentVideoIndexRight] : blobUrls[currentVideoIndex]) ?? ""}
                         autoplay
                         muted
                         playsinline
                         preload="auto"
-                        loop={(blobUrls.length === 1 && !petrolVideoUrl) || (isPetrolVideoPlaying && !petrolVideoUrl)}
+                        loop={((isDoubleWithTwoPlaylists ? !isPetrolVideoPlayingRight : !isPetrolVideoPlaying)) && (isDoubleWithTwoPlaylists
+                            ? (blobUrlsRight.length <= 1 && !petrolVideoUrl)
+                            : (blobUrls.length === 1 && !petrolVideoUrl))}
                         onended={() => handleVideoEnded(true)}
                         onplay={() => handleVideoPlay(true)}
-                        onerror={handleVideoError}
+                        onerror={isDoubleWithTwoPlaylists ? handleVideoErrorRight : handleVideoError}
                     ></video>
                     <video
                         bind:this={edgeVideoElement2}
@@ -484,7 +682,7 @@
                         preload="auto"
                         loop
                     ></video>
-                    {#if isPetrolVideoPlaying && screenSettings.length > 0}
+                    {#if (isDoubleWithTwoPlaylists ? isPetrolVideoPlayingRight : isPetrolVideoPlaying) && screenSettings.length > 0}
                         <GasStationWidget
                             boardType={BoardTypesEnum.PARTNER_NEFT_STATION_DOUBLE}
                             settings={screenSettings}
@@ -503,7 +701,7 @@
                 muted
                 playsinline
                 preload="auto"
-                loop={(blobUrls.length === 1 && !petrolVideoUrl) || (isPetrolVideoPlaying && !petrolVideoUrl)}
+                loop={!isPetrolVideoPlaying && (blobUrls.length === 1 && !petrolVideoUrl)}
                 onended={() => handleVideoEnded(false)}
                 onplay={() => handleVideoPlay(false)}
                 onerror={handleVideoError}
