@@ -10,10 +10,8 @@ node('master') {
             checkout scm
         }
         stage ('Setup service') {
-            sh "chown -R 777 /var/lib/jenkins/workspace/Front_Pwa_test/"
             sh "npm install"
             sh "npm run build"
-            sh "chmod -R 777 /var/lib/jenkins/workspace/Front_Pwa_test/node_modules/.vite-temp 2>/dev/null || true"
         }
         stage ('Start service') {
             sh "sudo systemctl restart smart_pwa_test.service"
