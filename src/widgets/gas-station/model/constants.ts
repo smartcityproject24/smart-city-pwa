@@ -17,12 +17,12 @@ export const petrolStationPriceTypes = [
 ];
 
 export const partnerNeftPriceTypes = [
-    PetrolPriceTypeEnum.PRICE_100,
-    PetrolPriceTypeEnum.PRICE_95,
-    PetrolPriceTypeEnum.PRICE_SUPER_92,
-    PetrolPriceTypeEnum.PRICE_92,
-    PetrolPriceTypeEnum.PRICE_DT,
     PetrolPriceTypeEnum.PRICE_GAS,
+    PetrolPriceTypeEnum.PRICE_92,
+    PetrolPriceTypeEnum.PRICE_SUPER_92,
+    PetrolPriceTypeEnum.PRICE_DT,
+    PetrolPriceTypeEnum.PRICE_95,
+    PetrolPriceTypeEnum.PRICE_100,
 ];
 
 export enum BoardTypesEnum {
