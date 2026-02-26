@@ -15,6 +15,7 @@ node('master') {
             sh "npm run build"
         }
         stage ('Start service') {
+            sh "sudo chown -R skyhunter:skyhunter /var/lib/jenkins/workspace/Front_Pwa_test/node_modules"
             sh "sudo systemctl restart smart_pwa_test.service"
         }
     } catch (Exception e) {
