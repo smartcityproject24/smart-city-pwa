@@ -37,6 +37,12 @@ export interface KioskInitConfig {
 	 * @default 1500
 	 */
 	fullscreenReturnDelay?: number;
+
+	/**
+	 * Включать fullscreen при открытии по ссылке в браузере (скрыть адресную строку и UI браузера)
+	 * @default true
+	 */
+	fullscreenInBrowser?: boolean;
 }
 
 /**
