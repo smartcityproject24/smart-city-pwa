@@ -108,6 +108,30 @@
                 const { settings: ss = [], playlists: pl = [], deviceName: dn,
                     deviceType: dt } = settings ?? {};
 
+                const isDoubleWithTwoPlaylists =
+                    dt === "PARTNER_NEFT_STATION_DOUBLE" && pl.length >= 2;
+
+                const screenBlocks = (() => {
+                    if (isDoubleWithTwoPlaylists) {
+                        return [{
+                            type: "SCREEN" as const,
+                            payload: { settings: ss, playlists: pl },
+                        }];
+                    }
+                    if (pl.length) {
+                        return pl.map(p => ({
+                            type: "SCREEN" as const,
+                            playlistUUID: p.playlistUUID,
+                            name: p.playlistName,
+                            payload: { settings: ss },
+                        }));
+                    }
+                    if (ss.length) {
+                        return [{ type: "SCREEN" as const, payload: { settings: ss } }];
+                    }
+                    return [];
+                })();
+
                 const blocks = [
                     { type: "control_panel" as const },
                     ...ss.map(s => ({
@@ -115,13 +139,7 @@
                         blocks: [{ type: "setting" as const, name: s.settingName,
                             value: s.settingValue }],
                     })),
-                    ...(pl.length ? pl.map(p => ({
-                        type: "SCREEN" as const,
-                        playlistUUID: p.playlistUUID,
-                        name: p.playlistName,
-                        payload: { settings: ss },
-                    })) : ss.length ? [{ type: "SCREEN" as const,
-                        payload: { settings: ss } }] : []),
+                    ...screenBlocks,
                 ];
 
                 const newPageInfo = {

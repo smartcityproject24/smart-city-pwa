@@ -29,13 +29,13 @@ export const petrolStationWidget = ({
                 )
             ) {
                 switch (price.settingType) {
-                    case PetrolPriceTypeEnum.PRICE_100:
+                    case PetrolPriceTypeEnum.PRICE_GAS:
                         return {
                             settingType: price.settingType,
                             price: price.settingValue,
-                            style: { top: 0, height: "16%" },
+                            style: { top: "2%", height: "16%" },
                         } as PetrolPriceConfig;
-                    case PetrolPriceTypeEnum.PRICE_95:
+                    case PetrolPriceTypeEnum.PRICE_92:
                         return {
                             settingType: price.settingType,
                             price: price.settingValue,
@@ -47,23 +47,23 @@ export const petrolStationWidget = ({
                             price: price.settingValue,
                             style: { top: "33%", height: "16%" },
                         } as PetrolPriceConfig;
-                    case PetrolPriceTypeEnum.PRICE_92:
-                        return {
-                            settingType: price.settingType,
-                            price: price.settingValue,
-                            style: { top: "52%", height: "14%" },
-                        } as PetrolPriceConfig;
                     case PetrolPriceTypeEnum.PRICE_DT:
                         return {
                             settingType: price.settingType,
                             price: price.settingValue,
-                            style: { top: "69%", height: "14%" },
+                            style: { top: "50%", height: "14%" },
                         } as PetrolPriceConfig;
-                    case PetrolPriceTypeEnum.PRICE_GAS:
+                    case PetrolPriceTypeEnum.PRICE_95:
                         return {
                             settingType: price.settingType,
                             price: price.settingValue,
-                            style: { top: "86%", height: "14%" },
+                            style: { top: "67%", height: "13%" },
+                        } as PetrolPriceConfig;
+                    case PetrolPriceTypeEnum.PRICE_100:
+                        return {
+                            settingType: price.settingType,
+                            price: price.settingValue,
+                            style: { top: "82%", height: "14%" },
                         } as PetrolPriceConfig;
                 }
             }
