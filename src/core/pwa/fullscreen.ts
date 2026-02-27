@@ -5,6 +5,32 @@
 
 import { isAndroid } from './platform-detection';
 
+const FULLSCREEN_PREFERRED_KEY = 'pwa_fullscreen_preferred';
+
+/**
+ * Читает из localStorage, был ли экран в fullscreen до перезагрузки.
+ * Используется при загрузке страницы, чтобы сразу попытаться включить fullscreen.
+ */
+export function getFullscreenPreferred(): boolean {
+    try {
+        return localStorage.getItem(FULLSCREEN_PREFERRED_KEY) === '1';
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Сохраняет в localStorage текущее предпочтение fullscreen (вкл/выкл).
+ * Вызывается при входе/выходе из fullscreen.
+ */
+export function setFullscreenPreferred(value: boolean): void {
+    try {
+        localStorage.setItem(FULLSCREEN_PREFERRED_KEY, value ? '1' : '0');
+    } catch {
+        // ignore
+    }
+}
+
 /**
  * Проверяет, поддерживается ли Fullscreen API в браузере
  */
@@ -205,8 +231,32 @@ export function onFullscreenChange(
 }
 
 /**
- * Начинает отслеживание и поддержание fullscreen режима
- * На Android принудительно возвращает fullscreen, если пользователь вышел
+ * Планирует возврат в fullscreen через указанную задержку (без дублирования вызовов).
+ */
+function scheduleRestoreFullscreen(
+    returnDelay: number,
+    isHandling: { current: boolean }
+): ReturnType<typeof setTimeout> {
+    return setTimeout(() => {
+        if (!isFullscreen() && !isHandling.current) {
+            isHandling.current = true;
+            requestFullscreen()
+                .then(() => {
+                    isHandling.current = false;
+                })
+                .catch((error) => {
+                    console.warn('[fullscreen] Не удалось вернуть fullscreen:', error);
+                    isHandling.current = false;
+                });
+        }
+    }, returnDelay);
+}
+
+/**
+ * Начинает отслеживание и поддержание fullscreen режима.
+ * - На Android возвращает fullscreen при выходе из него.
+ * - При возврате страницы в видимость (проснулся экран, переключились на вкладку) снова включает fullscreen.
+ *
  * @param forceOnAndroid - Принудительно возвращать fullscreen на Android (по умолчанию true)
  * @param returnDelay - Задержка перед возвратом в fullscreen в миллисекундах (по умолчанию 1500)
  * @returns Функция для остановки отслеживания
@@ -220,30 +270,22 @@ export function startFullscreenKeeper(
     }
 
     let returnTimeout: ReturnType<typeof setTimeout> | null = null;
-    let isHandling = false;
+    const isHandling = { current: false };
+
+    const tryRestoreFullscreen = () => {
+        if (returnTimeout) {
+            clearTimeout(returnTimeout);
+        }
+        returnTimeout = scheduleRestoreFullscreen(returnDelay, isHandling);
+    };
 
     const handleFullscreenChange = () => {
         const currentlyFullscreen = isFullscreen();
+        setFullscreenPreferred(currentlyFullscreen);
 
         if (!currentlyFullscreen) {
             if (forceOnAndroid && isAndroid()) {
-                if (returnTimeout) {
-                    clearTimeout(returnTimeout);
-                }
-
-                returnTimeout = setTimeout(() => {
-                    if (!isFullscreen() && !isHandling) {
-                        isHandling = true;
-                        requestFullscreen()
-                            .then(() => {
-                                isHandling = false;
-                            })
-                            .catch((error) => {
-                                console.warn('[startFullscreenKeeper] Не удалось вернуть fullscreen:', error);
-                                isHandling = false;
-                            });
-                    }
-                }, returnDelay);
+                tryRestoreFullscreen();
             }
         } else {
             if (returnTimeout) {
@@ -253,9 +295,20 @@ export function startFullscreenKeeper(
         }
     };
 
+    // Когда страница снова становится видимой (экран включился, вернулись на вкладку) — восстанавливаем fullscreen
+    const VISIBILITY_RESTORE_DELAY_MS = 300;
+    const handleVisibilityChange = () => {
+        if (document.visibilityState === 'visible' && !isFullscreen()) {
+            if (returnTimeout) clearTimeout(returnTimeout);
+            returnTimeout = scheduleRestoreFullscreen(VISIBILITY_RESTORE_DELAY_MS, isHandling);
+        }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     const unsubscribe = onFullscreenChange(handleFullscreenChange);
 
     return () => {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
         if (returnTimeout) {
             clearTimeout(returnTimeout);
             returnTimeout = null;

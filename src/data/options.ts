@@ -17,6 +17,7 @@ const options: Options = {
         autoFullscreen: true,
         forceFullscreenOnAndroid: true,
         fullscreenReturnDelay: 1500,
+        fullscreenInBrowser: true,
     },
     pwa: {
         update: {
