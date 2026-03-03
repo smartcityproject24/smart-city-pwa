@@ -63,7 +63,7 @@
                 <div in:fade={{ duration: 400, delay: 1000 + index * 200 }} style="width: 100%; height: 100%; display: flex; justify-content: flex-end; align-items: center;">
                     <span
                         style:font-family="digital-7, monospace"
-                        style:font-size="60px"
+                        style:font-size="90px"
                         style:color="#fff"
                         style:transform={scale ? `scale(${scale.x},${scale.y})` : "none"}
                     >
@@ -98,7 +98,7 @@
                 <div in:fade={{ duration: 400, delay: 1000 + index * 200 }} style="width: 100%; height: 100%; display: flex; align-items: center; padding-left: 20px;">
                     <span
                         style:font-family="digital-7, monospace"
-                        style:font-size="60px"
+                        style:font-size="90px"
                         style:text-align="left"
                         style:color="#fff"
                         style:transform={scale ? `scale(${scale.x},${scale.y})` : "none"}
