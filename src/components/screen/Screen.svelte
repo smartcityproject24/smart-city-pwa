@@ -830,6 +830,8 @@
         width: 50%;
         height: 100%;
         overflow: hidden;
+        padding-left: 64px;
+        box-sizing: border-box;
     }
 
     .screen-video-left {
@@ -847,9 +849,11 @@
         top: 0;
         left: 0;
         height: 100%;
-        width: auto;
+        width: 64px;
+        max-width: 64px;
         object-fit: cover;
         pointer-events: none;
         z-index: 1;
+        box-sizing: border-box;
     }
 </style>
