@@ -2,6 +2,8 @@ import { apiRequestRaw } from "../client";
 import { API_CONFIG } from "../config";
 import { ApiError } from "../types/errors";
 
+const VIDEO_CACHE_NAME = "video-blobs";
+
 /**
  * Сервис для работы с файлами
  */
@@ -28,12 +30,30 @@ export const fileService = {
                 });
             }
 
-            const blob = await response.blob();
-            return blob;
+            const responseToCache = response.clone();
+            if ("caches" in window) {
+                caches
+                    .open(VIDEO_CACHE_NAME)
+                    .then((cache) => cache.put(url, responseToCache))
+                    .catch(() => {});
+            }
+
+            return await response.blob();
         } catch (error) {
             if (error instanceof ApiError) {
                 throw error;
             }
+
+            if ("caches" in window) {
+                try {
+                    const cache = await caches.open(VIDEO_CACHE_NAME);
+                    const cached = await cache.match(url);
+                    if (cached) {
+                        return await cached.blob();
+                    }
+                } catch {}
+            }
+
             console.error(`[fileService] Network error while fetching file ${fileUUID}:`, error);
             throw new ApiError({
                 code: 0,
