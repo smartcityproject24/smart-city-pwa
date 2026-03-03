@@ -34,8 +34,7 @@
             return;
 
         if (!isPolling) isLoading = true;
-
-        if (error) error = null;
+        if (!isPolling) error = null;
 
         try {
             const data = await dashboardService.getSolutions($dashboardUUID);
@@ -178,6 +177,7 @@
                 });
             }
         } catch (err) {
+            if (isPolling) return;
             if (err instanceof ApiError) {
                 error = err;
             } else {
