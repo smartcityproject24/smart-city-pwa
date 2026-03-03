@@ -50,7 +50,7 @@ export const pwaConfig: Partial<VitePWAOptions> = {
 		clientsClaim: true,
 		runtimeCaching: [
 			{
-				urlPattern: /^https:\/\/.*rgb\.kg.*\/smart-city\/api\/v1\/dashboards\/.*\/solutions/i,
+				urlPattern: /\/smart-city\/api\/v1\/dashboards\/.*\/solutions/i,
 				handler: 'NetworkFirst',
 				options: {
 					cacheName: 'api-dashboards',
@@ -65,7 +65,7 @@ export const pwaConfig: Partial<VitePWAOptions> = {
 				}
 			},
 			{
-				urlPattern: /^https:\/\/.*rgb\.kg.*\/smart-city\/api\/v1\/playlists\/.*\/contents/i,
+				urlPattern: /\/smart-city\/api\/v1\/playlists\/.*\/contents/i,
 				handler: 'NetworkFirst',
 				options: {
 					cacheName: 'api-playlists',
@@ -80,7 +80,7 @@ export const pwaConfig: Partial<VitePWAOptions> = {
 				}
 			},
 			{
-				urlPattern: /^https:\/\/.*rgb\.kg.*\/smart-city\/api\/v1\/files\/.*\/dashboard/i,
+				urlPattern: /\/smart-city\/api\/v1\/files\/.*\/dashboard/i,
 				handler: 'NetworkFirst',
 				options: {
 					cacheName: 'api-files',
