@@ -3,7 +3,7 @@ node('master') {
         def appName = "pwa"
         def addVersion = "test"
         stage('Clean') {
-            sh "sudo rm -rf /var/lib/jenkins/workspace/Front_Pwa_test && sudo mkdir -p /var/lib/jenkins/workspace/Front_Pwa_test && sudo chown -R jenkins:jenkins /var/lib/jenkins/workspace/Front_Pwa_test/"
+            sh "sudo chown -R jenkins:jenkins /var/lib/jenkins/workspace/Front_Pwa_test/"
         }
         stage('Checkout') {
             println("Checkout $appName-$addVersion")
