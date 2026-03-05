@@ -58,6 +58,3 @@ npm run build
 ## Лицензия
 
 Private Use Only - см. [LICENSE](LICENSE)
-
-2025
-
