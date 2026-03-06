@@ -102,7 +102,7 @@
     const isFullscreen = $derived(width == null || height == null);
     const screenStyle = $derived(
         isFullscreen
-            ? "width: 100%; height: 100%; top: 0; left: 0;"
+            ? "width: 100%; height: 100vh; height: 100dvh; min-height: 100vh; min-height: 100dvh; top: 0; left: 0;"
             : `width: ${width}px; height: ${height}px; top: ${positionY ?? 0}px; left: ${positionX ?? 0}px;`,
     );
 
@@ -805,6 +805,8 @@
 <style lang="scss">
     .screen {
         position: absolute;
+        min-height: 100vh;
+        min-height: 100dvh;
     }
 
     .screen-video {
