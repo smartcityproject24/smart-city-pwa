@@ -2,7 +2,7 @@
     import { fade } from "svelte/transition";
 
     import { BlockRenderer } from "@components/block-renderer";
-    import type { Block, PageContext, BrightnessContext } from "@core";
+    import type { Block, BrightnessContext, AuthContext, UserContext } from "@core";
     import { onMount, getContext } from "svelte";
     import { Loader } from "@components/ui/loader";
 
@@ -17,6 +17,8 @@
     } = $props();
 
     const { opacity } = getContext<BrightnessContext>("brightness");
+    const { clearTokens } = getContext<AuthContext>("auth");
+    const { clearUserData } = getContext<UserContext>("user");
 
     let containerElement = $state<HTMLDivElement | undefined>(undefined);
     let solutionElement = $state<HTMLDivElement | undefined>(undefined);
@@ -26,7 +28,36 @@
     let containerWidth = $state(0);
     let containerHeight = $state(0);
 
+    let showLogoutButton = $state(false);
+    let logoutTimer: ReturnType<typeof setTimeout> | null = null;
+
     const isLoading = $derived(width > 0 && height > 0 && blocks.length === 0);
+
+    $effect(() => {
+        if (isLoading) {
+            logoutTimer = setTimeout(() => {
+                showLogoutButton = true;
+            }, 20000);
+        } else {
+            if (logoutTimer) {
+                clearTimeout(logoutTimer);
+                logoutTimer = null;
+            }
+            showLogoutButton = false;
+        }
+
+        return () => {
+            if (logoutTimer) {
+                clearTimeout(logoutTimer);
+                logoutTimer = null;
+            }
+        };
+    });
+
+    const handleLogout = async () => {
+        await clearTokens();
+        clearUserData();
+    };
 
     const calculateScale = () => {
         if (
@@ -84,6 +115,13 @@
 <div class="solution-container" bind:this={containerElement}>
     {#if isLoading}
         <Loader />
+        {#if showLogoutButton}
+            <div class="logout-overlay" in:fade={{ duration: 300 }}>
+                <button class="logout-btn" onclick={handleLogout}>
+                    Выйти
+                </button>
+            </div>
+        {/if}
     {:else}
         <div
             class="solution-wrapper"
@@ -132,5 +170,29 @@
     :global(.solution-container .loader) {
         width: 100%;
         height: 100%;
+    }
+
+    .logout-overlay {
+        position: absolute;
+        bottom: 40px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 100;
+    }
+
+    .logout-btn {
+        padding: 12px 32px;
+        font-size: 16px;
+        font-weight: 600;
+        color: #fff;
+        background: rgba(220, 53, 69, 0.9);
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        backdrop-filter: blur(4px);
+
+        &:hover {
+            background: rgba(200, 35, 51, 1);
+        }
     }
 </style>
