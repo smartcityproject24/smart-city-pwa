@@ -1,7 +1,6 @@
 <script lang="ts">
-    import { onDestroy, tick } from "svelte";
+    import { onDestroy, tick, untrack } from "svelte";
     import { getContext } from "svelte";
-    import { fade } from "svelte/transition";
 
     import { BlockRenderer } from "@components/block-renderer";
     import type { Block, BrightnessContext, UserContext } from "@core";
@@ -497,24 +496,28 @@
     $effect(() => {
         if (isDoubleWithTwoPlaylists) {
             if (!leftPlaylistUUID && !rightPlaylistUUID) {
-                blobUrls.forEach((url) => URL.revokeObjectURL(url));
-                blobUrls = [];
-                playlistContents = [];
-                blobUrlsRight.forEach((url) => URL.revokeObjectURL(url));
-                blobUrlsRight = [];
-                playlistContentsRight = [];
+                untrack(() => {
+                    blobUrls.forEach((url) => URL.revokeObjectURL(url));
+                    blobUrls = [];
+                    playlistContents = [];
+                    blobUrlsRight.forEach((url) => URL.revokeObjectURL(url));
+                    blobUrlsRight = [];
+                    playlistContentsRight = [];
+                });
                 return;
             }
-            if ($isReady && leftPlaylistUUID) loadPlaylist(leftPlaylistUUID);
+            if ($isReady && leftPlaylistUUID) untrack(() => loadPlaylist(leftPlaylistUUID));
             if ($isReady && rightPlaylistUUID)
-                loadPlaylistRight(rightPlaylistUUID);
+                untrack(() => loadPlaylistRight(rightPlaylistUUID));
         } else {
             if (playlistUUID && $isReady) {
-                loadPlaylist(playlistUUID);
+                untrack(() => loadPlaylist(playlistUUID));
             } else if (!playlistUUID) {
-                blobUrls.forEach((url) => URL.revokeObjectURL(url));
-                blobUrls = [];
-                playlistContents = [];
+                untrack(() => {
+                    blobUrls.forEach((url) => URL.revokeObjectURL(url));
+                    blobUrls = [];
+                    playlistContents = [];
+                });
             }
         }
     });

@@ -16,8 +16,11 @@
     const isWidgetBlock = (b: Block) =>
         String(b.type).toUpperCase() === "WIDGET";
 
+    const isSettingBlock = (b: Block) =>
+        String(b.type).toLowerCase() === "setting";
+
     const widgetBlocks = $derived(blocks.filter(isWidgetBlock));
-    const otherBlocks = $derived(blocks.filter((b) => !isWidgetBlock(b)));
+    const otherBlocks = $derived(blocks.filter((b) => !isWidgetBlock(b) && !isSettingBlock(b)));
 
     function getBlock(type: string | undefined): Component<any> | undefined {
         if (!type) return undefined;

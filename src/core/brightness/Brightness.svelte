@@ -64,17 +64,10 @@
 
     $effect(() => {
         const nextChange = $nextScheduleChange;
-        const currentTime = $currentTimeStore;
-
-        const _ = $scheduleSettings;
-
-        const now = Date.now();
-        if (now !== currentTime) {
-            currentTimeStore.set(now);
-        }
 
         if (nextChange === null) return;
 
+        const now = Date.now();
         const delay = nextChange - now;
         if (delay <= 0) {
             currentTimeStore.set(Date.now());

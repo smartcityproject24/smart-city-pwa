@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount } from "svelte";
+    import { onMount, untrack } from "svelte";
     import { fade } from "svelte/transition";
     import { Menu } from "lucide-svelte";
 
@@ -53,7 +53,7 @@
                 clearTimeout(inactivityTimer);
             }
         } else {
-            resetInactivityTimer();
+            untrack(() => resetInactivityTimer());
         }
     });
 
