@@ -1,6 +1,7 @@
 <script lang="ts">
     import { getContext } from "svelte";
     import type {
+        AuthContext,
         UserContext,
         ApiReadyContext,
         PageContext,
@@ -19,7 +20,8 @@
 
     let { children }: Props = $props();
 
-    const { dashboardUUID } = getContext<UserContext>("user");
+    const { clearTokens } = getContext<AuthContext>("auth");
+    const { dashboardUUID, clearUserData } = getContext<UserContext>("user");
     const { isReady } = getContext<ApiReadyContext>("api");
     const { pageInfo, currentPage, isPageInfoEqual, sortScheduleSettings } =
         getContext<PageContext>("page");
@@ -28,6 +30,12 @@
     let isLoading = $state(false);
     let error = $state<ApiError | null>(null);
     let intervalId: ReturnType<typeof setInterval> | null = null;
+    let pollingFailStreak = $state(0);
+
+    const handleLogout = async () => {
+        await clearTokens();
+        clearUserData();
+    };
 
     const fetchSolutions = async (isPolling = false) => {
         if (!$isReady || !$dashboardUUID || $dashboardUUID.trim() === "")
@@ -39,6 +47,9 @@
         try {
             const data = await dashboardService.getSolutions($dashboardUUID);
             const settings = await dashboardService.getSettings($dashboardUUID);
+
+            if (isPolling) pollingFailStreak = 0;
+
             const currentPageInfo = $pageInfo;
 
             const settingsForSchedule =
@@ -177,7 +188,15 @@
                 });
             }
         } catch (err) {
-            if (isPolling) return;
+            if (isPolling) {
+                if (navigator.onLine && err instanceof ApiError && err.code >= 400 && err.code < 500) {
+                    pollingFailStreak++;
+                    if (pollingFailStreak >= 3) {
+                        handleLogout();
+                    }
+                }
+                return;
+            }
             if (err instanceof ApiError) {
                 error = err;
             } else {
@@ -231,6 +250,7 @@
             error = null;
             fetchSolutions();
         }}
+        onLogout={handleLogout}
     />
 {:else if $currentPage === "dashboard" && isLoading}
     <Loader text="loading_data" fullscreen={true} />

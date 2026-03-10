@@ -4,7 +4,7 @@
     import { fade } from "svelte/transition";
 
     import { BlockRenderer } from "@components/block-renderer";
-    import type { Block, BrightnessContext, UserContext } from "@core";
+    import type { AuthContext, Block, BrightnessContext, UserContext } from "@core";
     import type { ApiReadyContext, PageContext } from "@core/types";
     import type { LoggingContext } from "@core";
     import { playlistService } from "@api/services/playlist.service";
@@ -47,9 +47,15 @@
 
     const { isReady } = getContext<ApiReadyContext>("api");
     const { opacity } = getContext<BrightnessContext>("brightness");
-    const { dashboardUUID } = getContext<UserContext>("user");
+    const { clearTokens } = getContext<AuthContext>("auth");
+    const { dashboardUUID, clearUserData } = getContext<UserContext>("user");
     const { logger } = getContext<LoggingContext>("logging");
     const { pageInfo } = getContext<PageContext>("page");
+
+    const handleLogout = async () => {
+        await clearTokens();
+        clearUserData();
+    };
 
     let videoElement = $state<HTMLVideoElement | undefined>(undefined);
     let videoElement2 = $state<HTMLVideoElement | undefined>(undefined);
@@ -680,6 +686,7 @@
                     loadPlaylist(playlistUUID);
                 }
             }}
+            onLogout={handleLogout}
         />
     {:else if hasContent}
         {#if isDoubleScreen}
