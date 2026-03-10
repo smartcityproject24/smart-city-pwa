@@ -3,8 +3,7 @@ node('master') {
         def appName = "pwa"
         def addVersion = "test"
         stage('Clean') {
-            sh "sudo rm -rf /var/lib/jenkins/workspace/Front_Pwa_test/*"
-            sh "mkdir -p /var/lib/jenkins/workspace/Front_Pwa_test"
+            sh "sudo chown -R jenkins:jenkins /var/lib/jenkins/workspace/Front_Pwa_test/"
         }
         stage('Checkout') {
             println("Checkout $appName-$addVersion")
@@ -15,7 +14,7 @@ node('master') {
             sh "npm run build"
         }
         stage ('Start service') {
-            sh "sudo chown -R skyhunter:skyhunter /var/lib/jenkins/workspace/Front_Pwa_test/node_modules"
+            sh "sudo chown -R skyhunter:skyhunter /var/lib/jenkins/workspace/Front_Pwa_test/"
             sh "sudo systemctl restart smart_pwa_test.service"
         }
     } catch (Exception e) {

@@ -108,7 +108,7 @@
     const isFullscreen = $derived(width == null || height == null);
     const screenStyle = $derived(
         isFullscreen
-            ? "width: 100%; height: 100%; top: 0; left: 0;"
+            ? "width: 100%; height: 100vh; height: 100dvh; min-height: 100vh; min-height: 100dvh; top: 0; left: 0;"
             : `width: ${width}px; height: ${height}px; top: ${positionY ?? 0}px; left: ${positionX ?? 0}px;`,
     );
 
@@ -129,46 +129,44 @@
             if (isSecondVideo) {
                 if (isPetrolVideoPlayingRight) {
                     isPetrolVideoPlayingRight = false;
-                    currentVideoIndexRight = 0;
+                    currentVideoIndexRight = blobUrlsRight.length > 0
+                        ? (currentVideoIndexRight + 1) % blobUrlsRight.length
+                        : 0;
                     tick().then(() => videoElement2?.play().catch(() => {}));
                     return;
                 }
                 if (blobUrlsRight.length === 0) return;
-                if (currentVideoIndexRight < blobUrlsRight.length - 1) {
-                    currentVideoIndexRight++;
-                    tick().then(() => videoElement2?.play().catch(() => {}));
-                } else if (petrolVideoUrl) {
+                if (petrolVideoUrl) {
                     isPetrolVideoPlayingRight = true;
-                    tick().then(() => videoElement2?.play().catch(() => {}));
                 } else {
-                    currentVideoIndexRight = 0;
-                    tick().then(() => videoElement2?.play().catch(() => {}));
+                    currentVideoIndexRight = (currentVideoIndexRight + 1) % blobUrlsRight.length;
                 }
+                tick().then(() => videoElement2?.play().catch(() => {}));
             } else {
                 if (isPetrolVideoPlayingLeft) {
                     isPetrolVideoPlayingLeft = false;
-                    currentVideoIndex = 0;
+                    currentVideoIndex = blobUrls.length > 0
+                        ? (currentVideoIndex + 1) % blobUrls.length
+                        : 0;
                     tick().then(() => videoElement?.play().catch(() => {}));
                     return;
                 }
                 if (blobUrls.length === 0 && !petrolVideoUrl) return;
-                if (currentVideoIndex < blobUrls.length - 1) {
-                    currentVideoIndex++;
-                    tick().then(() => videoElement?.play().catch(() => {}));
-                } else if (petrolVideoUrl) {
+                if (petrolVideoUrl) {
                     isPetrolVideoPlayingLeft = true;
-                    tick().then(() => videoElement?.play().catch(() => {}));
                 } else {
-                    currentVideoIndex = 0;
-                    tick().then(() => videoElement?.play().catch(() => {}));
+                    currentVideoIndex = (currentVideoIndex + 1) % blobUrls.length;
                 }
+                tick().then(() => videoElement?.play().catch(() => {}));
             }
             return;
         }
 
         if (isPetrolVideoPlaying) {
             isPetrolVideoPlaying = false;
-            currentVideoIndex = 0;
+            currentVideoIndex = blobUrls.length > 0
+                ? (currentVideoIndex + 1) % blobUrls.length
+                : 0;
             tick().then(() => {
                 videoElement?.play().catch(() => {});
                 videoElement2?.play().catch(() => {});
@@ -192,12 +190,10 @@
             }
         }
 
-        if (currentVideoIndex < blobUrls.length - 1) {
-            currentVideoIndex++;
-        } else if (petrolVideoUrl) {
+        if (petrolVideoUrl) {
             isPetrolVideoPlaying = true;
         } else {
-            currentVideoIndex = 0;
+            currentVideoIndex = (currentVideoIndex + 1) % blobUrls.length;
         }
         tick().then(() => {
             videoElement?.play().catch(() => {});
@@ -816,6 +812,8 @@
 <style lang="scss">
     .screen {
         position: absolute;
+        min-height: 100vh;
+        min-height: 100dvh;
     }
 
     .screen-video {
