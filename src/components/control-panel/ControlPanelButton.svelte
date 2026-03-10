@@ -2,6 +2,12 @@
     import { onMount, untrack } from "svelte";
     import { fade } from "svelte/transition";
     import { Menu } from "lucide-svelte";
+    import { isFullscreen, onFullscreenChange } from "@core/pwa";
+
+    const isInFullscreenMode = (): boolean =>
+        isFullscreen() ||
+        (typeof window !== "undefined" &&
+            window.matchMedia?.("(display-mode: fullscreen)")?.matches === true);
 
     interface Props {
         isOpen: boolean;
@@ -11,47 +17,107 @@
     let { isOpen, onToggle }: Props = $props();
 
     const INACTIVITY_TIMEOUT = 5000;
+    const HOT_CORNER_SIZE = 120;
+    const HOT_CORNER_HIDE_DELAY = 1500;
 
     let showButton = $state(false);
+    let isFullscreenActive = $state(false);
     let inactivityTimer: ReturnType<typeof setTimeout> | null = null;
+    let hotCornerHideTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const isInHotCorner = (clientX: number, clientY: number): boolean =>
+        clientX >= window.innerWidth - HOT_CORNER_SIZE && clientY <= HOT_CORNER_SIZE;
 
     const resetInactivityTimer = () => {
         showButton = true;
-
         if (inactivityTimer) clearTimeout(inactivityTimer);
-
         inactivityTimer = setTimeout(() => {
-            if (!isOpen) {
-                showButton = false;
-            }
+            if (!isOpen) showButton = false;
         }, INACTIVITY_TIMEOUT);
     };
 
-    const handleMouseMove = () => resetInactivityTimer();
-    const handleTouchStart = () => resetInactivityTimer();
+    const scheduleHotCornerHide = () => {
+        if (hotCornerHideTimer) clearTimeout(hotCornerHideTimer);
+        hotCornerHideTimer = setTimeout(() => {
+            if (!isOpen) showButton = false;
+            hotCornerHideTimer = null;
+        }, HOT_CORNER_HIDE_DELAY);
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+        if (isFullscreenActive) {
+            if (isInHotCorner(e.clientX, e.clientY)) {
+                showButton = true;
+                if (hotCornerHideTimer) {
+                    clearTimeout(hotCornerHideTimer);
+                    hotCornerHideTimer = null;
+                }
+            } else {
+                scheduleHotCornerHide();
+            }
+        } else {
+            resetInactivityTimer();
+        }
+    };
+
+    const handleTouchStart = (e: TouchEvent) => {
+        if (isFullscreenActive) {
+            const t = e.touches[0] ?? e.changedTouches?.[0];
+            if (t && isInHotCorner(t.clientX, t.clientY)) {
+                showButton = true;
+                if (hotCornerHideTimer) clearTimeout(hotCornerHideTimer);
+                hotCornerHideTimer = setTimeout(() => {
+                    if (!isOpen) showButton = false;
+                    hotCornerHideTimer = null;
+                }, HOT_CORNER_HIDE_DELAY);
+            }
+        } else {
+            resetInactivityTimer();
+        }
+    };
 
     onMount(() => {
-        showButton = true;
-        resetInactivityTimer();
+        isFullscreenActive = isInFullscreenMode();
+        const unsubscribe = onFullscreenChange(() => {
+            isFullscreenActive = isInFullscreenMode();
+            if (!isFullscreenActive) {
+                if (hotCornerHideTimer) {
+                    clearTimeout(hotCornerHideTimer);
+                    hotCornerHideTimer = null;
+                }
+                showButton = true;
+                resetInactivityTimer();
+            } else {
+                showButton = false;
+                if (inactivityTimer) clearTimeout(inactivityTimer);
+                inactivityTimer = null;
+            }
+        });
+
+        if (!isFullscreenActive) {
+            showButton = true;
+            resetInactivityTimer();
+        }
 
         window.addEventListener("mousemove", handleMouseMove);
-        
         window.addEventListener("touchstart", handleTouchStart, { passive: true });
 
         return () => {
+            unsubscribe();
             window.removeEventListener("mousemove", handleMouseMove);
             window.removeEventListener("touchstart", handleTouchStart);
-            if (inactivityTimer)
-                clearTimeout(inactivityTimer);
+            if (inactivityTimer) clearTimeout(inactivityTimer);
+            if (hotCornerHideTimer) clearTimeout(hotCornerHideTimer);
         };
     });
 
     $effect(() => {
         if (isOpen) {
             showButton = true;
-            if (inactivityTimer) {
-                clearTimeout(inactivityTimer);
-            }
+            if (inactivityTimer) clearTimeout(inactivityTimer);
+            if (hotCornerHideTimer) clearTimeout(hotCornerHideTimer);
+        } else if (isFullscreenActive) {
+            scheduleHotCornerHide();
         } else {
             untrack(() => resetInactivityTimer());
         }
@@ -59,7 +125,15 @@
 
     const handleClick = () => {
         onToggle();
-        resetInactivityTimer();
+        if (isFullscreenActive) {
+            if (hotCornerHideTimer) clearTimeout(hotCornerHideTimer);
+            hotCornerHideTimer = setTimeout(() => {
+                if (!isOpen) showButton = false;
+                hotCornerHideTimer = null;
+            }, HOT_CORNER_HIDE_DELAY);
+        } else {
+            resetInactivityTimer();
+        }
     };
 </script>
 
