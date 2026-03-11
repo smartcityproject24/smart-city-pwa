@@ -79,7 +79,7 @@
     <div
         style:position="absolute"
         style:top="31.6%"
-        style:left="50%"
+        style:left="22%"
         style:width="72%"
         style:height="45%"
     >
