@@ -44,7 +44,7 @@
     <div
         style:position="absolute"
         style:top={isPartnerNeftDouble ? "30%" : "25%"}
-        style:left={isPartnerNeftDouble ? "15%" : "50%"}
+        style:left={isPartnerNeftDouble ? "35%" : "50%"}
         style:width={isPartnerNeftDouble ? "100%" : "50%"}
         style:height={isPartnerNeftDouble ? "50%" : "58%"}
     >
