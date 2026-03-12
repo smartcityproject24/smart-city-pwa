@@ -96,12 +96,12 @@
     );
     const leftPlaylistUUID = $derived(
         isDoubleWithTwoPlaylists
-            ? payloadPlaylists[0]?.playlistUUID
+            ? payloadPlaylists[1]?.playlistUUID
             : playlistUUID,
     );
     const rightPlaylistUUID = $derived(
         isDoubleWithTwoPlaylists
-            ? payloadPlaylists[1]?.playlistUUID
+            ? payloadPlaylists[0]?.playlistUUID
             : undefined,
     );
     const isFullscreen = $derived(width == null || height == null);
