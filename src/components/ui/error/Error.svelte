@@ -8,10 +8,11 @@
     interface Props {
         error: ApiError;
         onRetry?: () => void;
+        onLogout?: () => void;
         fullscreen?: boolean;
     }
 
-    let { error, onRetry, fullscreen = false }: Props = $props();
+    let { error, onRetry, onLogout, fullscreen = false }: Props = $props();
 
     const { translate } = getContext<LanguageContext>("language");
 
@@ -30,11 +31,18 @@
     <div class="error-content">
         <h2>{$translate("error_loading_data")}</h2>
         <p class="error-message">{errorMessage}</p>
-        {#if shouldShowRetry && onRetry}
-            <button class="retry-button" type="button" onclick={onRetry}>
-                {$translate("retry")}
-            </button>
-        {/if}
+        <div class="error-actions">
+            {#if shouldShowRetry && onRetry}
+                <button class="retry-button" type="button" onclick={onRetry}>
+                    {$translate("retry")}
+                </button>
+            {/if}
+            {#if onLogout}
+                <button class="logout-button" type="button" onclick={onLogout}>
+                    {$translate("logout")}
+                </button>
+            {/if}
+        </div>
     </div>
 </div>
 
@@ -80,6 +88,13 @@
         color: colors.$color-error;
     }
 
+    .error-actions {
+        display: flex;
+        gap: clamp(8px, 0.8vw, 12px);
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+
     .retry-button {
         @include typo.button-text;
         padding: clamp(10px, 1vw, 14px) clamp(20px, 2vw, 28px);
@@ -92,6 +107,26 @@
 
         &:hover {
             opacity: 0.9;
+        }
+
+        &:active {
+            opacity: 0.8;
+        }
+    }
+
+    .logout-button {
+        @include typo.button-text;
+        padding: clamp(10px, 1vw, 14px) clamp(20px, 2vw, 28px);
+        background: transparent;
+        color: colors.$color-text-secondary;
+        border: 1px solid colors.$color-border;
+        border-radius: clamp(6px, 0.6vw, 10px);
+        cursor: pointer;
+        transition: opacity 120ms ease, border-color 120ms ease;
+
+        &:hover {
+            opacity: 0.9;
+            border-color: colors.$color-text-secondary;
         }
 
         &:active {

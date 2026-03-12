@@ -1,10 +1,9 @@
 <script lang="ts">
-    import { onDestroy, tick } from "svelte";
+    import { onDestroy, tick, untrack } from "svelte";
     import { getContext } from "svelte";
-    import { fade } from "svelte/transition";
 
     import { BlockRenderer } from "@components/block-renderer";
-    import type { Block, BrightnessContext, UserContext } from "@core";
+    import type { AuthContext, Block, BrightnessContext, UserContext } from "@core";
     import type { ApiReadyContext, PageContext } from "@core/types";
     import type { LoggingContext } from "@core";
     import { playlistService } from "@api/services/playlist.service";
@@ -47,9 +46,15 @@
 
     const { isReady } = getContext<ApiReadyContext>("api");
     const { opacity } = getContext<BrightnessContext>("brightness");
-    const { dashboardUUID } = getContext<UserContext>("user");
+    const { clearTokens } = getContext<AuthContext>("auth");
+    const { dashboardUUID, clearUserData } = getContext<UserContext>("user");
     const { logger } = getContext<LoggingContext>("logging");
     const { pageInfo } = getContext<PageContext>("page");
+
+    const handleLogout = async () => {
+        await clearTokens();
+        clearUserData();
+    };
 
     let videoElement = $state<HTMLVideoElement | undefined>(undefined);
     let videoElement2 = $state<HTMLVideoElement | undefined>(undefined);
@@ -91,12 +96,12 @@
     );
     const leftPlaylistUUID = $derived(
         isDoubleWithTwoPlaylists
-            ? payloadPlaylists[0]?.playlistUUID
+            ? payloadPlaylists[1]?.playlistUUID
             : playlistUUID,
     );
     const rightPlaylistUUID = $derived(
         isDoubleWithTwoPlaylists
-            ? payloadPlaylists[1]?.playlistUUID
+            ? payloadPlaylists[0]?.playlistUUID
             : undefined,
     );
     const isFullscreen = $derived(width == null || height == null);
@@ -497,24 +502,28 @@
     $effect(() => {
         if (isDoubleWithTwoPlaylists) {
             if (!leftPlaylistUUID && !rightPlaylistUUID) {
-                blobUrls.forEach((url) => URL.revokeObjectURL(url));
-                blobUrls = [];
-                playlistContents = [];
-                blobUrlsRight.forEach((url) => URL.revokeObjectURL(url));
-                blobUrlsRight = [];
-                playlistContentsRight = [];
+                untrack(() => {
+                    blobUrls.forEach((url) => URL.revokeObjectURL(url));
+                    blobUrls = [];
+                    playlistContents = [];
+                    blobUrlsRight.forEach((url) => URL.revokeObjectURL(url));
+                    blobUrlsRight = [];
+                    playlistContentsRight = [];
+                });
                 return;
             }
-            if ($isReady && leftPlaylistUUID) loadPlaylist(leftPlaylistUUID);
+            if ($isReady && leftPlaylistUUID) untrack(() => loadPlaylist(leftPlaylistUUID));
             if ($isReady && rightPlaylistUUID)
-                loadPlaylistRight(rightPlaylistUUID);
+                untrack(() => loadPlaylistRight(rightPlaylistUUID));
         } else {
             if (playlistUUID && $isReady) {
-                loadPlaylist(playlistUUID);
+                untrack(() => loadPlaylist(playlistUUID));
             } else if (!playlistUUID) {
-                blobUrls.forEach((url) => URL.revokeObjectURL(url));
-                blobUrls = [];
-                playlistContents = [];
+                untrack(() => {
+                    blobUrls.forEach((url) => URL.revokeObjectURL(url));
+                    blobUrls = [];
+                    playlistContents = [];
+                });
             }
         }
     });
@@ -680,6 +689,7 @@
                     loadPlaylist(playlistUUID);
                 }
             }}
+            onLogout={handleLogout}
         />
     {:else if hasContent}
         {#if isDoubleScreen}
