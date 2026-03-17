@@ -14,6 +14,7 @@ export interface CreateDashboardLogRequest {
     contentUUID?: string | null;
     fileUUID?: string | null;
     logContentShowDate?: string | null;
+    logEventTime?: string | null;
     logPayload: string;
     screenUUID?: string | null;
 }

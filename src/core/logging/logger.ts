@@ -52,6 +52,7 @@ export const logger = {
                 dashboardUUID,
                 data: {
                     logEventType: DashboardLogEventType.LOGIN,
+                    logEventTime: timestamp,
                     logPayload,
                 },
             });
@@ -95,6 +96,7 @@ export const logger = {
                     contentUUID: null,
                     fileUUID: data.fileUUID,
                     logContentShowDate,
+                    logEventTime: timestamp,
                     logPayload,
                     screenUUID: data.screenUUID,
                 },
@@ -131,6 +133,7 @@ export const logger = {
                 dashboardUUID,
                 data: {
                     logEventType: DashboardLogEventType.VIDEO_ERROR,
+                    logEventTime: timestamp,
                     fileUUID: data.fileUUID,
                     logPayload,
                     screenUUID: data.screenUUID,
