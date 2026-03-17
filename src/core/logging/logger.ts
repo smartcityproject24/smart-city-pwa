@@ -146,6 +146,45 @@ export const logger = {
     },
 
     /**
+     * Логирует начало показа виджета
+     */
+    async logWidgetStart(
+        dashboardUUID: string,
+        data: {
+            widgetType: string;
+            screenUUID?: string;
+            timestamp?: string;
+        },
+    ): Promise<void> {
+        try {
+            const timestamp = data.timestamp || new Date().toISOString();
+            const logPayload = JSON.stringify({
+                widgetType: data.widgetType,
+                screenUUID: data.screenUUID,
+                timestamp,
+            });
+
+            await saveLog({
+                type: DashboardLogEventType.WIDGET_START,
+                timestamp,
+                dashboardUUID,
+                data: {
+                    logEventType: DashboardLogEventType.WIDGET_START,
+                    logEventTime: timestamp,
+                    logPayload,
+                    screenUUID: data.screenUUID,
+                },
+            });
+
+            if (isOnline()) {
+                await sendPendingLogs();
+            }
+        } catch (error) {
+            console.error("[Logger] Failed to log widget start:", error);
+        }
+    },
+
+    /**
      * Отправляет все неотправленные логи для всех dashboard
      */
     async sendAllPendingLogs(): Promise<{
