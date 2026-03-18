@@ -2,6 +2,8 @@
     import { cubicOut } from "svelte/easing";
     import { fly, fade } from "svelte/transition";
     import { BoardTypesEnum } from "./model/constants";
+    import { getContext } from "svelte";
+    import type { LoggingContext, PageContext } from "@core";
     import { petrolStationWidget } from "./GasStationWidget";
 
     interface BoardSetting {
@@ -18,12 +20,31 @@
 
     let { boardType, settings, scale }: Props = $props();
 
+    const { logger } = getContext<LoggingContext>("logging");
+    const { pageInfo } = getContext<PageContext>("page");
+
     const data = $derived(petrolStationWidget({ boardType, settings }));
     let animationKey = $state(0);
 
     $effect(() => {
         if (data) {
             animationKey = 1;
+
+            const widgetType =
+                boardType === BoardTypesEnum.PETROL_STATION ||
+                boardType === BoardTypesEnum.PETROL_STATION_DOUBLE
+                    ? "PETROL_STATION"
+                    : "PARTNER_NEFT_STATION";
+
+            const dashboardUUID = $pageInfo?.dashboardUUID;
+
+            if (dashboardUUID) {
+                logger
+                    .logWidgetStart(dashboardUUID, {
+                        widgetType,
+                    })
+                    .catch(() => {});
+            }
         }
     });
 
