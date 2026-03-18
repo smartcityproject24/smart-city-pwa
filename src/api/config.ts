@@ -11,8 +11,7 @@ export const API_CONFIG = {
         dashboards: {
             getSolution: (solutionUUID: string) =>
                 `${API_BASE_V1_URL}/dashboards/${solutionUUID}/solutions`,
-            // Temporary: createLog endpoint disabled
-            // createLog: (dashboardUUID: string) => `${API_BASE_V1_URL}/dashboards/${dashboardUUID}/logs`,
+            createLog: (dashboardUUID: string) => `${API_BASE_V1_URL}/dashboards/${dashboardUUID}/logs`,
             getSettings: (dashboardUUID: string) =>
                 `${API_BASE_V1_URL}/dashboards/${dashboardUUID}/settings`,
         },

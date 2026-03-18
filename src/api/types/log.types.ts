@@ -6,6 +6,7 @@ export enum DashboardLogEventType {
     LOGIN = "LOGIN",
     VIDEO_START = "VIDEO_START",
     VIDEO_ERROR = "VIDEO_ERROR",
+    WIDGET_START = "WIDGET_START",
 }
 
 export interface CreateDashboardLogRequest {
@@ -13,6 +14,7 @@ export interface CreateDashboardLogRequest {
     contentUUID?: string | null;
     fileUUID?: string | null;
     logContentShowDate?: string | null;
+    logEventTime?: string | null;
     logPayload: string;
     screenUUID?: string | null;
 }
