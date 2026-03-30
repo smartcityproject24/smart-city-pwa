@@ -39,7 +39,8 @@ export const pwaConfig: Partial<VitePWAOptions> = {
 		]
 	},
 	workbox: {
-		globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,ttf,jpg,JPG,jpeg,JPEG}'],
+		globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,ttf}'],
+		globIgnores: ['airlines/**', 'petrol-station/**'],
 		navigationPreload: false,
 		navigateFallback: '/index.html',
 		navigateFallbackDenylist: [
@@ -61,7 +62,7 @@ export const pwaConfig: Partial<VitePWAOptions> = {
 					cacheableResponse: {
 						statuses: [0, 200]
 					},
-					networkTimeoutSeconds: 10
+					networkTimeoutSeconds: 3
 				}
 			},
 			{
@@ -76,7 +77,7 @@ export const pwaConfig: Partial<VitePWAOptions> = {
 					cacheableResponse: {
 						statuses: [0, 200]
 					},
-					networkTimeoutSeconds: 10
+					networkTimeoutSeconds: 3
 				}
 			},
 			{
@@ -91,7 +92,7 @@ export const pwaConfig: Partial<VitePWAOptions> = {
 					cacheableResponse: {
 						statuses: [0, 200]
 					},
-					networkTimeoutSeconds: 30
+					networkTimeoutSeconds: 5
 				}
 			}
 		]
