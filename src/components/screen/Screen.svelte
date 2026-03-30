@@ -62,10 +62,10 @@
     let edgeVideoElement2 = $state<HTMLVideoElement | undefined>(undefined);
     let currentVideoIndex = $state(0);
     let playlistContents = $state<PlaylistContent[]>([]);
-    let blobUrls = $state<string[]>([]);
+    let currentBlobUrl = $state<string | null>(null);
     let currentVideoIndexRight = $state(0);
     let playlistContentsRight = $state<PlaylistContent[]>([]);
-    let blobUrlsRight = $state<string[]>([]);
+    let currentBlobUrlRight = $state<string | null>(null);
     let petrolVideoUrl = $state<string | null>(null);
     let isPetrolVideoPlaying = $state(false);
     let isPetrolVideoPlayingLeft = $state(false);
@@ -123,57 +123,88 @@
         });
     };
 
-    const handleVideoEnded = (isSecondVideo = false) => {
+    const loadVideoAtIndex = async (index: number, side: 'left' | 'right' = 'left'): Promise<void> => {
+        const contents = side === 'left' ? playlistContents : playlistContentsRight;
+        if (index < 0 || index >= contents.length) return;
+
+        try {
+            const blob = await fileService.getFileBlob(contents[index].fileUUID);
+            if (!(blob instanceof Blob)) return;
+
+            const newUrl = URL.createObjectURL(blob);
+            if (side === 'left') {
+                const oldUrl = currentBlobUrl;
+                currentBlobUrl = newUrl;
+                if (oldUrl) URL.revokeObjectURL(oldUrl);
+            } else {
+                const oldUrl = currentBlobUrlRight;
+                currentBlobUrlRight = newUrl;
+                if (oldUrl) URL.revokeObjectURL(oldUrl);
+            }
+        } catch (err) {
+            console.warn(`[Screen] Failed to load video at index ${index}:`, err);
+        }
+    };
+
+    const handleVideoEnded = async (isSecondVideo = false) => {
         if (isDoubleWithTwoPlaylists) {
             if (isSecondVideo) {
                 if (isPetrolVideoPlayingRight) {
                     isPetrolVideoPlayingRight = false;
-                    currentVideoIndexRight = blobUrlsRight.length > 0
-                        ? (currentVideoIndexRight + 1) % blobUrlsRight.length
+                    currentVideoIndexRight = playlistContentsRight.length > 0
+                        ? (currentVideoIndexRight + 1) % playlistContentsRight.length
                         : 0;
-                    tick().then(() => videoElement2?.play().catch(() => {}));
+                    await loadVideoAtIndex(currentVideoIndexRight, 'right');
+                    await tick();
+                    videoElement2?.play().catch(() => {});
                     return;
                 }
-                if (blobUrlsRight.length === 0) return;
+                if (playlistContentsRight.length === 0) return;
                 if (petrolVideoUrl) {
                     isPetrolVideoPlayingRight = true;
                 } else {
-                    currentVideoIndexRight = (currentVideoIndexRight + 1) % blobUrlsRight.length;
+                    currentVideoIndexRight = (currentVideoIndexRight + 1) % playlistContentsRight.length;
+                    await loadVideoAtIndex(currentVideoIndexRight, 'right');
                 }
-                tick().then(() => videoElement2?.play().catch(() => {}));
+                await tick();
+                videoElement2?.play().catch(() => {});
             } else {
                 if (isPetrolVideoPlayingLeft) {
                     isPetrolVideoPlayingLeft = false;
-                    currentVideoIndex = blobUrls.length > 0
-                        ? (currentVideoIndex + 1) % blobUrls.length
+                    currentVideoIndex = playlistContents.length > 0
+                        ? (currentVideoIndex + 1) % playlistContents.length
                         : 0;
-                    tick().then(() => videoElement?.play().catch(() => {}));
+                    await loadVideoAtIndex(currentVideoIndex);
+                    await tick();
+                    videoElement?.play().catch(() => {});
                     return;
                 }
-                if (blobUrls.length === 0 && !petrolVideoUrl) return;
+                if (playlistContents.length === 0 && !petrolVideoUrl) return;
                 if (petrolVideoUrl) {
                     isPetrolVideoPlayingLeft = true;
                 } else {
-                    currentVideoIndex = (currentVideoIndex + 1) % blobUrls.length;
+                    currentVideoIndex = (currentVideoIndex + 1) % playlistContents.length;
+                    await loadVideoAtIndex(currentVideoIndex);
                 }
-                tick().then(() => videoElement?.play().catch(() => {}));
+                await tick();
+                videoElement?.play().catch(() => {});
             }
             return;
         }
 
         if (isPetrolVideoPlaying) {
             isPetrolVideoPlaying = false;
-            currentVideoIndex = blobUrls.length > 0
-                ? (currentVideoIndex + 1) % blobUrls.length
+            currentVideoIndex = playlistContents.length > 0
+                ? (currentVideoIndex + 1) % playlistContents.length
                 : 0;
-            tick().then(() => {
-                videoElement?.play().catch(() => {});
-                videoElement2?.play().catch(() => {});
-            });
+            await loadVideoAtIndex(currentVideoIndex);
+            await tick();
+            videoElement?.play().catch(() => {});
+            videoElement2?.play().catch(() => {});
             return;
         }
 
-        if (blobUrls.length === 0 && !petrolVideoUrl) return;
+        if (playlistContents.length === 0 && !petrolVideoUrl) return;
 
         if (videoElement && videoElement2) {
             if (
@@ -192,12 +223,12 @@
         if (petrolVideoUrl) {
             isPetrolVideoPlaying = true;
         } else {
-            currentVideoIndex = (currentVideoIndex + 1) % blobUrls.length;
+            currentVideoIndex = (currentVideoIndex + 1) % playlistContents.length;
+            await loadVideoAtIndex(currentVideoIndex);
         }
-        tick().then(() => {
-            videoElement?.play().catch(() => {});
-            if (videoElement2) videoElement2.play().catch(() => {});
-        });
+        await tick();
+        videoElement?.play().catch(() => {});
+        if (videoElement2) videoElement2.play().catch(() => {});
     };
 
     const handleVideoPlay = (isSecondVideo = false) => {
@@ -312,8 +343,7 @@
             const contents = await playlistService.getContents(uuid);
 
             if (!contents || contents.length === 0) {
-                blobUrls.forEach((url) => URL.revokeObjectURL(url));
-                blobUrls = [];
+                if (currentBlobUrl) { URL.revokeObjectURL(currentBlobUrl); currentBlobUrl = null; }
                 playlistContents = [];
                 currentVideoIndex = 0;
                 if (videoElement) {
@@ -324,34 +354,19 @@
                 return;
             }
 
-            const blobPromises = contents.map((content) =>
-                fileService.getFileBlob(content.fileUUID).catch((err) => {
-                    if (!navigator.onLine) {
-                        console.warn(
-                            `[Screen] File ${content.fileUUID} not available offline, not in cache`,
-                        );
-                    }
-                    return err;
-                }),
-            );
-
-            const blobs = await Promise.all(blobPromises);
-
-            blobUrls.forEach((url) => URL.revokeObjectURL(url));
-
+            // Pre-cache files to disk (Cache API) sequentially — minimal RAM usage
             const validContents: PlaylistContent[] = [];
-            const validBlobUrls: string[] = [];
-
-            blobs.forEach((blob, index) => {
-                if (blob && blob instanceof Blob) {
-                    validContents.push(contents[index]);
-                    validBlobUrls.push(URL.createObjectURL(blob));
+            for (const content of contents) {
+                const available = await fileService.precacheFile(content.fileUUID);
+                if (available) {
+                    validContents.push(content);
+                } else if (!navigator.onLine) {
+                    console.warn(`[Screen] File ${content.fileUUID} not available offline, not in cache`);
                 }
-            });
+            }
 
             if (validContents.length === 0) {
-                blobUrls.forEach((url) => URL.revokeObjectURL(url));
-                blobUrls = [];
+                if (currentBlobUrl) { URL.revokeObjectURL(currentBlobUrl); currentBlobUrl = null; }
                 playlistContents = [];
                 currentVideoIndex = 0;
                 if (videoElement) {
@@ -363,8 +378,10 @@
             }
 
             playlistContents = validContents;
-            blobUrls = validBlobUrls;
             currentVideoIndex = 0;
+
+            // Load only first video blob into memory
+            await loadVideoAtIndex(0);
         } catch (err) {
             if (err instanceof ApiError) {
                 error = err;
@@ -376,9 +393,6 @@
                     error: "Unknown",
                     detailedMessages: [],
                 });
-            }
-
-            if (blobUrls.length === 0) {
             }
         } finally {
             isLoadingPlaylist = false;
@@ -395,8 +409,7 @@
             const contents = await playlistService.getContents(uuid);
 
             if (!contents || contents.length === 0) {
-                blobUrlsRight.forEach((url) => URL.revokeObjectURL(url));
-                blobUrlsRight = [];
+                if (currentBlobUrlRight) { URL.revokeObjectURL(currentBlobUrlRight); currentBlobUrlRight = null; }
                 playlistContentsRight = [];
                 currentVideoIndexRight = 0;
                 if (videoElement2) {
@@ -407,33 +420,19 @@
                 return;
             }
 
-            const blobPromises = contents.map((content) =>
-                fileService.getFileBlob(content.fileUUID).catch((err) => {
-                    if (!navigator.onLine) {
-                        console.warn(
-                            `[Screen] File ${content.fileUUID} not available offline, not in cache`,
-                        );
-                    }
-                    return err;
-                }),
-            );
-
-            const blobs = await Promise.all(blobPromises);
-
-            blobUrlsRight.forEach((url) => URL.revokeObjectURL(url));
-
+            // Pre-cache files to disk (Cache API) sequentially — minimal RAM usage
             const validContents: PlaylistContent[] = [];
-            const validBlobUrls: string[] = [];
-
-            blobs.forEach((blob, index) => {
-                if (blob && blob instanceof Blob) {
-                    validContents.push(contents[index]);
-                    validBlobUrls.push(URL.createObjectURL(blob));
+            for (const content of contents) {
+                const available = await fileService.precacheFile(content.fileUUID);
+                if (available) {
+                    validContents.push(content);
+                } else if (!navigator.onLine) {
+                    console.warn(`[Screen] File ${content.fileUUID} not available offline, not in cache`);
                 }
-            });
+            }
 
             if (validContents.length === 0) {
-                blobUrlsRight = [];
+                if (currentBlobUrlRight) { URL.revokeObjectURL(currentBlobUrlRight); currentBlobUrlRight = null; }
                 playlistContentsRight = [];
                 currentVideoIndexRight = 0;
                 if (videoElement2) {
@@ -445,8 +444,10 @@
             }
 
             playlistContentsRight = validContents;
-            blobUrlsRight = validBlobUrls;
             currentVideoIndexRight = 0;
+
+            // Load only first video blob into memory
+            await loadVideoAtIndex(0, 'right');
         } catch (err) {
             if (err instanceof ApiError) {
                 errorRight = err;
@@ -503,11 +504,9 @@
         if (isDoubleWithTwoPlaylists) {
             if (!leftPlaylistUUID && !rightPlaylistUUID) {
                 untrack(() => {
-                    blobUrls.forEach((url) => URL.revokeObjectURL(url));
-                    blobUrls = [];
+                    if (currentBlobUrl) { URL.revokeObjectURL(currentBlobUrl); currentBlobUrl = null; }
                     playlistContents = [];
-                    blobUrlsRight.forEach((url) => URL.revokeObjectURL(url));
-                    blobUrlsRight = [];
+                    if (currentBlobUrlRight) { URL.revokeObjectURL(currentBlobUrlRight); currentBlobUrlRight = null; }
                     playlistContentsRight = [];
                 });
                 return;
@@ -520,8 +519,7 @@
                 untrack(() => loadPlaylist(playlistUUID));
             } else if (!playlistUUID) {
                 untrack(() => {
-                    blobUrls.forEach((url) => URL.revokeObjectURL(url));
-                    blobUrls = [];
+                    if (currentBlobUrl) { URL.revokeObjectURL(currentBlobUrl); currentBlobUrl = null; }
                     playlistContents = [];
                 });
             }
@@ -659,15 +657,15 @@
     });
 
     const hasContent = $derived(
-        blobUrls.length > 0 || blobUrlsRight.length > 0 || !!petrolVideoUrl,
+        playlistContents.length > 0 || playlistContentsRight.length > 0 || !!petrolVideoUrl,
     );
     const showLoader = $derived(
         (isLoadingPlaylist || isLoadingPlaylistRight) && !hasContent,
     );
 
     onDestroy(() => {
-        blobUrls.forEach((url) => URL.revokeObjectURL(url));
-        blobUrlsRight.forEach((url) => URL.revokeObjectURL(url));
+        if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
+        if (currentBlobUrlRight) URL.revokeObjectURL(currentBlobUrlRight);
         if (petrolVideoUrl) URL.revokeObjectURL(petrolVideoUrl);
         if (playlistCheckInterval) clearInterval(playlistCheckInterval);
     });
@@ -712,17 +710,17 @@
                             ? isPetrolVideoPlayingLeft
                             : isPetrolVideoPlaying) && petrolVideoUrl
                             ? petrolVideoUrl
-                            : (blobUrls[currentVideoIndex] ?? "")}
+                            : (currentBlobUrl ?? "")}
                         autoplay
                         muted
                         playsinline
-                        preload="auto"
+                        preload="metadata"
                         loop={(isDoubleWithTwoPlaylists
                             ? !isPetrolVideoPlayingLeft
                             : !isPetrolVideoPlaying) &&
                             (isDoubleWithTwoPlaylists
-                                ? blobUrls.length <= 1 && !petrolVideoUrl
-                                : blobUrls.length === 1 && !petrolVideoUrl)}
+                                ? playlistContents.length <= 1 && !petrolVideoUrl
+                                : playlistContents.length === 1 && !petrolVideoUrl)}
                         onended={() => handleVideoEnded(false)}
                         onplay={() => handleVideoPlay(false)}
                         onerror={handleVideoError}
@@ -743,18 +741,18 @@
                             : isPetrolVideoPlaying) && petrolVideoUrl
                             ? petrolVideoUrl
                             : ((isDoubleWithTwoPlaylists
-                                  ? blobUrlsRight[currentVideoIndexRight]
-                                  : blobUrls[currentVideoIndex]) ?? "")}
+                                  ? currentBlobUrlRight
+                                  : currentBlobUrl) ?? "")}
                         autoplay
                         muted
                         playsinline
-                        preload="auto"
+                        preload="metadata"
                         loop={(isDoubleWithTwoPlaylists
                             ? !isPetrolVideoPlayingRight
                             : !isPetrolVideoPlaying) &&
                             (isDoubleWithTwoPlaylists
-                                ? blobUrlsRight.length <= 1 && !petrolVideoUrl
-                                : blobUrls.length === 1 && !petrolVideoUrl)}
+                                ? playlistContentsRight.length <= 1 && !petrolVideoUrl
+                                : playlistContents.length === 1 && !petrolVideoUrl)}
                         onended={() => handleVideoEnded(true)}
                         onplay={() => handleVideoPlay(true)}
                         onerror={isDoubleWithTwoPlaylists
@@ -785,13 +783,13 @@
                 class="screen-video"
                 src={isPetrolVideoPlaying && petrolVideoUrl
                     ? petrolVideoUrl
-                    : blobUrls[currentVideoIndex]}
+                    : currentBlobUrl}
                 autoplay
                 muted
                 playsinline
-                preload="auto"
+                preload="metadata"
                 loop={!isPetrolVideoPlaying &&
-                    blobUrls.length === 1 &&
+                    playlistContents.length === 1 &&
                     !petrolVideoUrl}
                 onended={() => handleVideoEnded(false)}
                 onplay={() => handleVideoPlay(false)}
