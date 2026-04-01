@@ -5,7 +5,7 @@
 export enum DashboardLogEventType {
     LOGIN = "LOGIN",
     VIDEO_START = "VIDEO_START",
-    VIDEO_ERROR = "VIDEO_ERROR",
+    VIDEO_ERROR = "ERROR",
     WIDGET_START = "WIDGET_START",
 }
 
