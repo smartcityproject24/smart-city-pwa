@@ -1,9 +1,8 @@
 <script lang="ts">
     import { onMount, onDestroy, getContext, setContext } from "svelte";
     import type { Snippet } from "svelte";
-    import { registerSW } from "virtual:pwa-register";
-    import { createPWARegisterOptions } from "./registration";
     import { initKioskMode } from "./kiosk-init";
+    import { setupPWAUpdates } from "./updates";
     import type { Options } from "../types";
     import type { PlatformDetectionContext } from "./types";
     import { getPlatformType } from "./platform-detection";
@@ -22,20 +21,61 @@
         platform: getPlatformType(),
     });
 
-    onMount(() => {
-        if ("serviceWorker" in navigator) {
-            const pwaUpdateConfig = options?.pwa?.update || {};
-            const pwaRegisterOptions = createPWARegisterOptions(pwaUpdateConfig);
-            registerSW(pwaRegisterOptions);
+    async function registerServiceWorker() {
+        if (!("serviceWorker" in navigator)) return;
 
-            // Если страница загружена без контроля SW (первый визит или сброс кеша),
-            // перезагружаем один раз после активации — чтобы SW перехватывал навигацию офлайн.
-            if (!navigator.serviceWorker.controller) {
-                navigator.serviceWorker.ready.then(() => {
-                    window.location.reload();
-                });
-            }
+        let registration: ServiceWorkerRegistration;
+        try {
+            registration = await navigator.serviceWorker.register("/sw.js", {
+                updateViaCache: "none",
+                scope: "/",
+            });
+            console.log("[PWA] SW зарегистрирован");
+        } catch (e) {
+            console.error("[PWA] SW регистрация не удалась:", e);
+            return;
         }
+
+        // Если SW уже ждёт активации (ожидает skipWaiting) — активируем немедленно
+        const activateWaiting = (sw: ServiceWorker) => {
+            sw.postMessage({ type: "SKIP_WAITING" });
+        };
+
+        if (registration.waiting) {
+            activateWaiting(registration.waiting);
+        }
+
+        // Когда находится новая версия SW — сразу принудительно активируем
+        registration.addEventListener("updatefound", () => {
+            const installing = registration.installing;
+            if (!installing) return;
+            installing.addEventListener("statechange", () => {
+                if (installing.state === "installed") {
+                    activateWaiting(installing);
+                }
+            });
+        });
+
+        // Если страница ещё не под контролем SW (первый визит / сброс кеша)
+        // — ждём активации и делаем одну перезагрузку
+        if (!navigator.serviceWorker.controller) {
+            navigator.serviceWorker.addEventListener(
+                "controllerchange",
+                () => {
+                    console.log("[PWA] SW взял контроль — перезагрузка");
+                    window.location.reload();
+                },
+                { once: true }
+            );
+        }
+
+        // Периодическая проверка обновлений
+        const updateConfig = options?.pwa?.update || {};
+        setupPWAUpdates(registration, updateConfig);
+    }
+
+    onMount(() => {
+        registerServiceWorker();
 
         const kioskConfig = options?.kiosk || {};
         kioskCleanup = initKioskMode(kioskConfig);
