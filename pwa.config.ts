@@ -28,6 +28,7 @@ export const pwaConfig: Partial<VitePWAOptions> = {
 			}
 		]
 	},
+	includeAssets: ['petrol-station/pn_edge.mp4'],
 	workbox: {
 		globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,ttf}'],
 		globIgnores: ['airlines/**', 'petrol-station/**'],
