@@ -145,6 +145,20 @@ export async function listVideoFiles(): Promise<OPFSEntry[]> {
     }
 }
 
+// ─── Full clear ───────────────────────────────────────────────────────────────
+
+/** Удаляет всю папку videos/ из OPFS (все .mp4 и .tmp файлы). */
+export async function clearAllVideoFiles(): Promise<void> {
+    try {
+        const root = await navigator.storage.getDirectory();
+        await root.removeEntry(VIDEOS_DIR, { recursive: true });
+        _videosDir = null; // сбросить кешированный handle
+        console.log("[OPFS] videos/ directory cleared");
+    } catch {
+        // Директория уже отсутствует — не ошибка
+    }
+}
+
 // ─── Storage estimate ─────────────────────────────────────────────────────────
 
 export async function getStorageEstimate(): Promise<StorageEstimate> {

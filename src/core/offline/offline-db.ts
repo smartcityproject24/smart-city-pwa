@@ -251,3 +251,26 @@ export async function putSyncState(record: SyncStateRecord): Promise<void> {
         throw error;
     }
 }
+
+// ─── Full clear ───────────────────────────────────────────────────────────────
+
+/** Удаляет все записи из всех сторов IDB (videos, playlists, sync_state). */
+export async function clearAllOfflineDB(): Promise<void> {
+    if (!isAvailable()) return;
+    try {
+        const db = await getDB();
+        const tx = db.transaction(
+            [STORE_VIDEOS, STORE_PLAYLISTS, STORE_SYNC_STATE],
+            "readwrite"
+        );
+        await Promise.all([
+            tx.objectStore(STORE_VIDEOS).clear(),
+            tx.objectStore(STORE_PLAYLISTS).clear(),
+            tx.objectStore(STORE_SYNC_STATE).clear(),
+        ]);
+        await tx.done;
+        console.log("[OfflineDB] All stores cleared");
+    } catch (error) {
+        console.error("[OfflineDB] clearAllOfflineDB failed:", error);
+    }
+}
