@@ -27,6 +27,14 @@
             const pwaUpdateConfig = options?.pwa?.update || {};
             const pwaRegisterOptions = createPWARegisterOptions(pwaUpdateConfig);
             registerSW(pwaRegisterOptions);
+
+            // Если страница загружена без контроля SW (первый визит или сброс кеша),
+            // перезагружаем один раз после активации — чтобы SW перехватывал навигацию офлайн.
+            if (!navigator.serviceWorker.controller) {
+                navigator.serviceWorker.ready.then(() => {
+                    window.location.reload();
+                });
+            }
         }
 
         const kioskConfig = options?.kiosk || {};

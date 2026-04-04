@@ -1,6 +1,10 @@
 <script lang="ts">
     import { onDestroy, tick, untrack } from "svelte";
     import { getContext } from "svelte";
+    import type { OfflineContext } from "@core";
+    import type { PlaylistItem, PlaylistRecord } from "@core/offline/offline-db";
+    import { getPlaylist, getAllVideoRecords } from "@core/offline/offline-db";
+    import { videoFileExists } from "@core/offline/opfs";
 
     import { BlockRenderer } from "@components/block-renderer";
     import type { AuthContext, Block, BrightnessContext, UserContext } from "@core";
@@ -50,6 +54,28 @@
     const { dashboardUUID, clearUserData } = getContext<UserContext>("user");
     const { logger } = getContext<LoggingContext>("logging");
     const { pageInfo } = getContext<PageContext>("page");
+    const { isOfflineReady, getVideoObjectUrl, registerPlaylist } =
+        getContext<OfflineContext>("offline");
+
+    // ── Offline adapter ────────────────────────────────────────────────────
+    // Converts PlaylistItem[] (from OPFS/IDB) to PlaylistContent[].
+    // item.id === fileUUID — all downstream logging and loading works unchanged.
+    function itemsToContents(items: PlaylistItem[]): PlaylistContent[] {
+        return [...items]
+            .sort((a, b) => a.order - b.order)
+            .map((item) => ({
+                contentUUID: item.id,
+                contentName: "",
+                coverUUID: "",
+                fileUUID: item.id,
+                fileType: "VIDEO",
+                contentType: "VIDEO",
+                contentWidth: 0,
+                contentHeight: 0,
+                contentSize: 0,
+                contentDuration: item.durationSeconds,
+            }));
+    }
 
     const handleLogout = async () => {
         await clearTokens();
@@ -76,10 +102,22 @@
     let errorRight = $state<ApiError | null>(null);
     let playlistCheckInterval: ReturnType<typeof setInterval> | null = null;
 
+    // Offline-path state
+    let offlinePlaylistLeft = $state<PlaylistRecord | null>(null);
+    let offlinePlaylistRight = $state<PlaylistRecord | null>(null);
+    // Track which playlist version is loaded; number because manifest.version is number
+    let loadedVersionLeft = $state<number | null>(null);
+    let loadedVersionRight = $state<number | null>(null);
+    let pendingPlaylistUpdateLeft = $state(false);
+    let pendingPlaylistUpdateRight = $state(false);
+
     // Check if there are any widget blocks
     const hasWidgets = $derived(
         blocks.some((block) => String(block.type).toUpperCase() === "WIDGET"),
     );
+
+    // true = use OPFS + IDB path; false = use legacy Cache API path
+    const isUsingOffline = $derived($isOfflineReady && offlinePlaylistLeft !== null);
 
     const screenSettings = $derived(payload?.settings ?? []);
     const petrolVideoSetting = $derived(
@@ -128,10 +166,18 @@
         if (index < 0 || index >= contents.length) return;
 
         try {
-            const blob = await fileService.getFileBlob(contents[index].fileUUID);
-            if (!(blob instanceof Blob)) return;
+            let newUrl: string;
 
-            const newUrl = URL.createObjectURL(blob);
+            if (isUsingOffline) {
+                // OPFS path: read directly from local file system (no network)
+                newUrl = await getVideoObjectUrl(contents[index].fileUUID);
+            } else {
+                // Legacy path: Cache API / network
+                const blob = await fileService.getFileBlob(contents[index].fileUUID);
+                if (!(blob instanceof Blob)) return;
+                newUrl = URL.createObjectURL(blob);
+            }
+
             if (side === 'left') {
                 const oldUrl = currentBlobUrl;
                 currentBlobUrl = newUrl;
@@ -147,6 +193,35 @@
     };
 
     const handleVideoEnded = async (isSecondVideo = false) => {
+        // Apply a pending offline playlist update after the current video ends
+        // so playback is never interrupted mid-video
+        if (!isSecondVideo && pendingPlaylistUpdateLeft) {
+            pendingPlaylistUpdateLeft = false;
+            const pl = offlinePlaylistLeft;
+            if (pl && pl.version !== loadedVersionLeft) {
+                playlistContents = itemsToContents(pl.items);
+                currentVideoIndex = 0;
+                loadedVersionLeft = pl.version;
+                await loadVideoAtIndex(0, 'left');
+                await tick();
+                videoElement?.play().catch(() => {});
+                return;
+            }
+        }
+        if (isSecondVideo && isDoubleWithTwoPlaylists && pendingPlaylistUpdateRight) {
+            pendingPlaylistUpdateRight = false;
+            const pl = offlinePlaylistRight;
+            if (pl && pl.version !== loadedVersionRight) {
+                playlistContentsRight = itemsToContents(pl.items);
+                currentVideoIndexRight = 0;
+                loadedVersionRight = pl.version;
+                await loadVideoAtIndex(0, 'right');
+                await tick();
+                videoElement2?.play().catch(() => {});
+                return;
+            }
+        }
+
         if (isDoubleWithTwoPlaylists) {
             if (isSecondVideo) {
                 if (isPetrolVideoPlayingRight) {
@@ -501,6 +576,8 @@
     };
 
     $effect(() => {
+        if (isUsingOffline) return; // offline path: activePlaylistLeft/Right effects handle loading
+
         if (isDoubleWithTwoPlaylists) {
             if (!leftPlaylistUUID && !rightPlaylistUUID) {
                 untrack(() => {
@@ -532,7 +609,123 @@
         }
     });
 
+    // ── Offline effects ───────────────────────────────────────────────────────
+    // Register each playlist for background sync. When a new version arrives,
+    // apply it immediately on first load or queue it as pending for after the
+    // current video finishes.
+
+    async function logOfflineReadiness(playlistUUID: string, side: 'left' | 'right') {
+        const pl = await getPlaylist(playlistUUID);
+        if (!pl || pl.items.length === 0) {
+            console.warn(`[Offline:${side}] ❌ Плейлист ${playlistUUID} — нет данных в IDB, видео НЕ готово к оффлайн`);
+            return;
+        }
+
+        const allVideos = await getAllVideoRecords();
+        const videoMap = new Map(allVideos.map(v => [v.id, v]));
+
+        let readyCount = 0;
+        for (const item of pl.items) {
+            const record = videoMap.get(item.id);
+            const inOpfs = await videoFileExists(item.id);
+            const status = record?.status ?? 'no_record';
+            const ready = status === 'ready' && inOpfs;
+            if (ready) readyCount++;
+            console.log(
+                `[Offline:${side}] ${ready ? '✅' : '❌'} ${item.id} | IDB: ${status} | OPFS: ${inOpfs ? 'есть' : 'нет'}`
+            );
+        }
+
+        if (readyCount === pl.items.length) {
+            console.log(`[Offline:${side}] ✅ Все ${readyCount}/${pl.items.length} видео готовы — работает БЕЗ интернета`);
+        } else {
+            console.warn(`[Offline:${side}] ⚠️ Готово ${readyCount}/${pl.items.length} видео — оффлайн НЕ полный`);
+        }
+    }
+
+    function applyOfflinePlaylist(pl: PlaylistRecord, side: 'left' | 'right') {
+        if (side === 'left') {
+            if (pl.version === loadedVersionLeft) return;
+            if (loadedVersionLeft === null && playlistContents.length > 0) {
+                // Legacy path is actively playing — wait for current video to end
+                // before switching to OPFS path, so playback is not interrupted
+                pendingPlaylistUpdateLeft = true;
+            } else if (loadedVersionLeft === null) {
+                // Nothing is playing yet — apply immediately
+                playlistContents = itemsToContents(pl.items);
+                currentVideoIndex = 0;
+                loadedVersionLeft = pl.version;
+                loadVideoAtIndex(0, 'left');
+            } else {
+                // Already on offline path — queue update for after current video ends
+                pendingPlaylistUpdateLeft = true;
+            }
+        } else {
+            if (pl.version === loadedVersionRight) return;
+            if (loadedVersionRight === null && playlistContentsRight.length > 0) {
+                pendingPlaylistUpdateRight = true;
+            } else if (loadedVersionRight === null) {
+                playlistContentsRight = itemsToContents(pl.items);
+                currentVideoIndexRight = 0;
+                loadedVersionRight = pl.version;
+                loadVideoAtIndex(0, 'right');
+            } else {
+                pendingPlaylistUpdateRight = true;
+            }
+        }
+    }
+
     $effect(() => {
+        const uuid = leftPlaylistUUID;
+        if (!uuid || !$isOfflineReady) return;
+
+        // Load whatever is already in IDB immediately (only if has actual items)
+        getPlaylist(uuid).then((pl) => {
+            logOfflineReadiness(uuid, 'left');
+            if (pl && pl.items.length > 0) {
+                offlinePlaylistLeft = pl;
+                untrack(() => applyOfflinePlaylist(pl, 'left'));
+            }
+        });
+
+        // Register for future sync updates
+        return registerPlaylist(uuid, () => {
+            getPlaylist(uuid).then((pl) => {
+                logOfflineReadiness(uuid, 'left');
+                if (pl && pl.items.length > 0) {
+                    offlinePlaylistLeft = pl;
+                    applyOfflinePlaylist(pl, 'left');
+                }
+            });
+        });
+    });
+
+    $effect(() => {
+        const uuid = rightPlaylistUUID;
+        if (!uuid || !$isOfflineReady || !isDoubleWithTwoPlaylists) return;
+
+        getPlaylist(uuid).then((pl) => {
+            logOfflineReadiness(uuid, 'right');
+            if (pl && pl.items.length > 0) {
+                offlinePlaylistRight = pl;
+                untrack(() => applyOfflinePlaylist(pl, 'right'));
+            }
+        });
+
+        return registerPlaylist(uuid, () => {
+            getPlaylist(uuid).then((pl) => {
+                logOfflineReadiness(uuid, 'right');
+                if (pl && pl.items.length > 0) {
+                    offlinePlaylistRight = pl;
+                    applyOfflinePlaylist(pl, 'right');
+                }
+            });
+        });
+    });
+
+    $effect(() => {
+        if (isUsingOffline) return; // offline path: sync-scheduler handles updates
+
         const leftUuid = isDoubleWithTwoPlaylists
             ? leftPlaylistUUID
             : playlistUUID;
