@@ -1,6 +1,6 @@
 <script lang="ts">
     import { setContext } from "svelte";
-    import { writable } from "svelte/store";
+    import { writable, get } from "svelte/store";
     import type { UserContext } from "./types";
     import type { Snippet } from "svelte";
 
@@ -31,13 +31,16 @@
     };
 
     const clearUserData = () => {
-        userUUID.set("");
-        dashboardUUID.set("");
-
         if (typeof window !== "undefined") {
+            const currentDashId = get(dashboardUUID);
+            if (currentDashId) {
+                localStorage.removeItem(`dashboard_cache_${currentDashId}`);
+            }
             localStorage.removeItem(USER_UUID_KEY);
             localStorage.removeItem(DASHBOARD_UUID_KEY);
         }
+        userUUID.set("");
+        dashboardUUID.set("");
     };
 
     setContext<UserContext>("user", {
