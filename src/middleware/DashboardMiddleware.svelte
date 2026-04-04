@@ -31,6 +31,7 @@
     let error = $state<ApiError | null>(null);
     let intervalId: ReturnType<typeof setInterval> | null = null;
     let pollingFailStreak = $state(0);
+    let retryTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
     const handleLogout = async () => {
         await clearTokens();
@@ -197,15 +198,16 @@
                 }
                 return;
             }
+            // Сетевая ошибка (нет соединения) — не показываем экран ошибки,
+            // автоматически повторяем через 10 секунд
+            const isNetworkError = !(err instanceof ApiError) || err.code === 0;
+            if (isNetworkError) {
+                console.warn("[Dashboard] Нет соединения, повтор через 10с...");
+                retryTimeoutId = setTimeout(() => fetchSolutions(false), 10_000);
+                return;
+            }
             if (err instanceof ApiError) {
                 error = err;
-            } else {
-                error = new ApiError({
-                    code: 0,
-                    message: "unknown_error",
-                    error: "Unknown",
-                    detailedMessages: [],
-                });
             }
         } finally {
             if (!isPolling) {
@@ -237,6 +239,10 @@
             if (intervalId) {
                 clearInterval(intervalId);
                 intervalId = null;
+            }
+            if (retryTimeoutId) {
+                clearTimeout(retryTimeoutId);
+                retryTimeoutId = null;
             }
         };
     });
