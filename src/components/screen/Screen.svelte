@@ -440,6 +440,9 @@
                 }
             }
 
+            // OPFS could have taken over during async precache work — don't overwrite
+            if (isUsingOffline) return;
+
             if (validContents.length === 0) {
                 if (currentBlobUrl) { URL.revokeObjectURL(currentBlobUrl); currentBlobUrl = null; }
                 playlistContents = [];
@@ -505,6 +508,9 @@
                     console.warn(`[Screen] File ${content.fileUUID} not available offline, not in cache`);
                 }
             }
+
+            // OPFS could have taken over during async precache work — don't overwrite
+            if (isUsingOffline) return;
 
             if (validContents.length === 0) {
                 if (currentBlobUrlRight) { URL.revokeObjectURL(currentBlobUrlRight); currentBlobUrlRight = null; }
@@ -655,7 +661,10 @@
                 playlistContents = itemsToContents(pl.items);
                 currentVideoIndex = 0;
                 loadedVersionLeft = pl.version;
-                loadVideoAtIndex(0, 'left');
+                loadVideoAtIndex(0, 'left').then(async () => {
+                    await tick();
+                    videoElement?.play().catch(() => {});
+                });
             } else {
                 // Already on offline path — queue update for after current video ends
                 pendingPlaylistUpdateLeft = true;
@@ -668,7 +677,10 @@
                 playlistContentsRight = itemsToContents(pl.items);
                 currentVideoIndexRight = 0;
                 loadedVersionRight = pl.version;
-                loadVideoAtIndex(0, 'right');
+                loadVideoAtIndex(0, 'right').then(async () => {
+                    await tick();
+                    videoElement2?.play().catch(() => {});
+                });
             } else {
                 pendingPlaylistUpdateRight = true;
             }
