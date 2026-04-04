@@ -4,7 +4,6 @@ import { runSync, type SyncResult } from "./sync-orchestrator";
 
 export interface SchedulerOptions {
     playlistUUID: string;
-    /** Interval between successful syncs. Default: 10 minutes */
     intervalMs?: number;
     /** Initial backoff delay after first failure. Default: 30 seconds */
     backoffInitialMs?: number;
@@ -23,9 +22,9 @@ export interface SchedulerOptions {
 export function startSyncScheduler(options: SchedulerOptions): () => void {
     const {
         playlistUUID,
-        intervalMs = 10 * 60 * 1000,   // 10 min
+        intervalMs = 3 * 60 * 1000,    // 3 min
         backoffInitialMs = 30 * 1000,   // 30s
-        backoffMaxMs = 60 * 60 * 1000,  // 1h
+        backoffMaxMs = 3 * 60 * 60 * 1000,  // 3h
     } = options;
 
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
