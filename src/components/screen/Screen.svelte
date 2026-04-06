@@ -1,5 +1,6 @@
 <script lang="ts">
     import { onDestroy, tick, untrack } from "svelte";
+    import { get } from "svelte/store";
     import { getContext } from "svelte";
     import type { OfflineContext } from "@core";
     import type { PlaylistItem, PlaylistRecord } from "@core/offline/offline-db";
@@ -56,6 +57,21 @@
     const { pageInfo } = getContext<PageContext>("page");
     const { isOfflineReady, getVideoObjectUrl, registerPlaylist } =
         getContext<OfflineContext>("offline");
+
+    /** Stagger edge clips vs main content — weak SOCs (e.g. Pentium N37xx) overload on 4 decoders at once */
+    const EDGE_PLAY_DELAY_FIRST_MS = 220;
+    const EDGE_PLAY_DELAY_SECOND_MS = 520;
+
+    function playEdgeWhenVisible(el: HTMLVideoElement, delayMs: number): void {
+        window.setTimeout(() => {
+            if (get(opacity) === 0) return;
+            void el.play().catch((err) => {
+                if (err instanceof Error && err.name !== "AbortError") {
+                    console.error("[Screen] Failed to play edge video:", err);
+                }
+            });
+        }, delayMs);
+    }
 
     // ── Offline adapter ────────────────────────────────────────────────────
     // Converts PlaylistItem[] (from OPFS/IDB) to PlaylistContent[].
@@ -834,14 +850,7 @@
                 edgeVideoElement.paused &&
                 edgeVideoElement.readyState >= 2
             ) {
-                edgeVideoElement.play().catch((err) => {
-                    if (err.name !== "AbortError") {
-                        console.error(
-                            "[Screen] Failed to resume edge video:",
-                            err,
-                        );
-                    }
-                });
+                playEdgeWhenVisible(edgeVideoElement, EDGE_PLAY_DELAY_FIRST_MS);
             }
             if (
                 isDoubleScreen &&
@@ -849,14 +858,10 @@
                 edgeVideoElement2.paused &&
                 edgeVideoElement2.readyState >= 2
             ) {
-                edgeVideoElement2.play().catch((err) => {
-                    if (err.name !== "AbortError") {
-                        console.error(
-                            "[Screen] Failed to resume edge video 2:",
-                            err,
-                        );
-                    }
-                });
+                playEdgeWhenVisible(
+                    edgeVideoElement2,
+                    EDGE_PLAY_DELAY_SECOND_MS,
+                );
             }
         }
     });
@@ -902,11 +907,15 @@
                         bind:this={edgeVideoElement}
                         class="edge-video"
                         src="/petrol-station/pn_edge.mp4"
-                        autoplay
                         muted
                         playsinline
                         preload="metadata"
                         loop
+                        onloadeddata={(e) =>
+                            playEdgeWhenVisible(
+                                e.currentTarget,
+                                EDGE_PLAY_DELAY_FIRST_MS,
+                            )}
                     ></video>
                     <video
                         bind:this={videoElement}
@@ -968,11 +977,15 @@
                         bind:this={edgeVideoElement2}
                         class="edge-video"
                         src="/petrol-station/pn_edge.mp4"
-                        autoplay
                         muted
                         playsinline
                         preload="metadata"
                         loop
+                        onloadeddata={(e) =>
+                            playEdgeWhenVisible(
+                                e.currentTarget,
+                                EDGE_PLAY_DELAY_SECOND_MS,
+                            )}
                     ></video>
                     {#if (isDoubleWithTwoPlaylists ? isPetrolVideoPlayingRight : isPetrolVideoPlaying) && screenSettings.length > 0}
                         <GasStationWidget
