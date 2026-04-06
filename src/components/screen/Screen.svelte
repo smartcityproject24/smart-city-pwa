@@ -905,7 +905,7 @@
                         autoplay
                         muted
                         playsinline
-                        preload="auto"
+                        preload="metadata"
                         loop
                     ></video>
                     <video
@@ -971,7 +971,7 @@
                         autoplay
                         muted
                         playsinline
-                        preload="auto"
+                        preload="metadata"
                         loop
                     ></video>
                     {#if (isDoubleWithTwoPlaylists ? isPetrolVideoPlayingRight : isPetrolVideoPlaying) && screenSettings.length > 0}
