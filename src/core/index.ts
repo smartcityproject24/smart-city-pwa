@@ -27,3 +27,4 @@ export type {
 
 export type { LoggingContext } from './logging/types';
 export type { PlatformDetectionContext } from './pwa/types';
+export type { OfflineContext } from './offline/types';

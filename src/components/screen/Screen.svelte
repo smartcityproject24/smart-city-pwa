@@ -1,6 +1,11 @@
 <script lang="ts">
     import { onDestroy, tick, untrack } from "svelte";
+    import { get } from "svelte/store";
     import { getContext } from "svelte";
+    import type { OfflineContext } from "@core";
+    import type { PlaylistItem, PlaylistRecord } from "@core/offline/offline-db";
+    import { getPlaylist, getAllVideoRecords } from "@core/offline/offline-db";
+    import { videoFileExists } from "@core/offline/opfs";
 
     import { BlockRenderer } from "@components/block-renderer";
     import type { AuthContext, Block, BrightnessContext, UserContext } from "@core";
@@ -50,6 +55,43 @@
     const { dashboardUUID, clearUserData } = getContext<UserContext>("user");
     const { logger } = getContext<LoggingContext>("logging");
     const { pageInfo } = getContext<PageContext>("page");
+    const { isOfflineReady, getVideoObjectUrl, registerPlaylist } =
+        getContext<OfflineContext>("offline");
+
+    /** Stagger edge clips vs main content — weak SOCs (e.g. Pentium N37xx) overload on 4 decoders at once */
+    const EDGE_PLAY_DELAY_FIRST_MS = 220;
+    const EDGE_PLAY_DELAY_SECOND_MS = 520;
+
+    function playEdgeWhenVisible(el: HTMLVideoElement, delayMs: number): void {
+        window.setTimeout(() => {
+            if (get(opacity) === 0) return;
+            void el.play().catch((err) => {
+                if (err instanceof Error && err.name !== "AbortError") {
+                    console.error("[Screen] Failed to play edge video:", err);
+                }
+            });
+        }, delayMs);
+    }
+
+    // ── Offline adapter ────────────────────────────────────────────────────
+    // Converts PlaylistItem[] (from OPFS/IDB) to PlaylistContent[].
+    // item.id === fileUUID — all downstream logging and loading works unchanged.
+    function itemsToContents(items: PlaylistItem[]): PlaylistContent[] {
+        return [...items]
+            .sort((a, b) => a.order - b.order)
+            .map((item) => ({
+                contentUUID: item.id,
+                contentName: "",
+                coverUUID: "",
+                fileUUID: item.id,
+                fileType: "VIDEO",
+                contentType: "VIDEO",
+                contentWidth: 0,
+                contentHeight: 0,
+                contentSize: 0,
+                contentDuration: item.durationSeconds,
+            }));
+    }
 
     const handleLogout = async () => {
         await clearTokens();
@@ -62,10 +104,10 @@
     let edgeVideoElement2 = $state<HTMLVideoElement | undefined>(undefined);
     let currentVideoIndex = $state(0);
     let playlistContents = $state<PlaylistContent[]>([]);
-    let blobUrls = $state<string[]>([]);
+    let currentBlobUrl = $state<string | null>(null);
     let currentVideoIndexRight = $state(0);
     let playlistContentsRight = $state<PlaylistContent[]>([]);
-    let blobUrlsRight = $state<string[]>([]);
+    let currentBlobUrlRight = $state<string | null>(null);
     let petrolVideoUrl = $state<string | null>(null);
     let isPetrolVideoPlaying = $state(false);
     let isPetrolVideoPlayingLeft = $state(false);
@@ -76,10 +118,22 @@
     let errorRight = $state<ApiError | null>(null);
     let playlistCheckInterval: ReturnType<typeof setInterval> | null = null;
 
+    // Offline-path state
+    let offlinePlaylistLeft = $state<PlaylistRecord | null>(null);
+    let offlinePlaylistRight = $state<PlaylistRecord | null>(null);
+    // Track which playlist version is loaded; number because manifest.version is number
+    let loadedVersionLeft = $state<number | null>(null);
+    let loadedVersionRight = $state<number | null>(null);
+    let pendingPlaylistUpdateLeft = $state(false);
+    let pendingPlaylistUpdateRight = $state(false);
+
     // Check if there are any widget blocks
     const hasWidgets = $derived(
         blocks.some((block) => String(block.type).toUpperCase() === "WIDGET"),
     );
+
+    // true = use OPFS + IDB path; false = use legacy Cache API path
+    const isUsingOffline = $derived($isOfflineReady && offlinePlaylistLeft !== null);
 
     const screenSettings = $derived(payload?.settings ?? []);
     const petrolVideoSetting = $derived(
@@ -123,57 +177,125 @@
         });
     };
 
-    const handleVideoEnded = (isSecondVideo = false) => {
+    const loadVideoAtIndex = async (index: number, side: 'left' | 'right' = 'left'): Promise<void> => {
+        const contents = side === 'left' ? playlistContents : playlistContentsRight;
+        if (index < 0 || index >= contents.length) return;
+
+        try {
+            let newUrl: string;
+
+            if (isUsingOffline) {
+                // OPFS path: read directly from local file system (no network)
+                newUrl = await getVideoObjectUrl(contents[index].fileUUID);
+            } else {
+                // Legacy path: Cache API / network
+                const blob = await fileService.getFileBlob(contents[index].fileUUID);
+                if (!(blob instanceof Blob)) return;
+                newUrl = URL.createObjectURL(blob);
+            }
+
+            if (side === 'left') {
+                const oldUrl = currentBlobUrl;
+                currentBlobUrl = newUrl;
+                if (oldUrl) URL.revokeObjectURL(oldUrl);
+            } else {
+                const oldUrl = currentBlobUrlRight;
+                currentBlobUrlRight = newUrl;
+                if (oldUrl) URL.revokeObjectURL(oldUrl);
+            }
+        } catch (err) {
+            console.warn(`[Screen] Failed to load video at index ${index}:`, err);
+        }
+    };
+
+    const handleVideoEnded = async (isSecondVideo = false) => {
+        // Apply a pending offline playlist update after the current video ends
+        // so playback is never interrupted mid-video
+        if (!isSecondVideo && pendingPlaylistUpdateLeft) {
+            pendingPlaylistUpdateLeft = false;
+            const pl = offlinePlaylistLeft;
+            if (pl && pl.version !== loadedVersionLeft) {
+                playlistContents = itemsToContents(pl.items);
+                currentVideoIndex = 0;
+                loadedVersionLeft = pl.version;
+                await loadVideoAtIndex(0, 'left');
+                await tick();
+                videoElement?.play().catch(() => {});
+                return;
+            }
+        }
+        if (isSecondVideo && isDoubleWithTwoPlaylists && pendingPlaylistUpdateRight) {
+            pendingPlaylistUpdateRight = false;
+            const pl = offlinePlaylistRight;
+            if (pl && pl.version !== loadedVersionRight) {
+                playlistContentsRight = itemsToContents(pl.items);
+                currentVideoIndexRight = 0;
+                loadedVersionRight = pl.version;
+                await loadVideoAtIndex(0, 'right');
+                await tick();
+                videoElement2?.play().catch(() => {});
+                return;
+            }
+        }
+
         if (isDoubleWithTwoPlaylists) {
             if (isSecondVideo) {
                 if (isPetrolVideoPlayingRight) {
                     isPetrolVideoPlayingRight = false;
-                    currentVideoIndexRight = blobUrlsRight.length > 0
-                        ? (currentVideoIndexRight + 1) % blobUrlsRight.length
+                    currentVideoIndexRight = playlistContentsRight.length > 0
+                        ? (currentVideoIndexRight + 1) % playlistContentsRight.length
                         : 0;
-                    tick().then(() => videoElement2?.play().catch(() => {}));
+                    await loadVideoAtIndex(currentVideoIndexRight, 'right');
+                    await tick();
+                    videoElement2?.play().catch(() => {});
                     return;
                 }
-                if (blobUrlsRight.length === 0) return;
+                if (playlistContentsRight.length === 0) return;
                 if (petrolVideoUrl) {
                     isPetrolVideoPlayingRight = true;
                 } else {
-                    currentVideoIndexRight = (currentVideoIndexRight + 1) % blobUrlsRight.length;
+                    currentVideoIndexRight = (currentVideoIndexRight + 1) % playlistContentsRight.length;
+                    await loadVideoAtIndex(currentVideoIndexRight, 'right');
                 }
-                tick().then(() => videoElement2?.play().catch(() => {}));
+                await tick();
+                videoElement2?.play().catch(() => {});
             } else {
                 if (isPetrolVideoPlayingLeft) {
                     isPetrolVideoPlayingLeft = false;
-                    currentVideoIndex = blobUrls.length > 0
-                        ? (currentVideoIndex + 1) % blobUrls.length
+                    currentVideoIndex = playlistContents.length > 0
+                        ? (currentVideoIndex + 1) % playlistContents.length
                         : 0;
-                    tick().then(() => videoElement?.play().catch(() => {}));
+                    await loadVideoAtIndex(currentVideoIndex);
+                    await tick();
+                    videoElement?.play().catch(() => {});
                     return;
                 }
-                if (blobUrls.length === 0 && !petrolVideoUrl) return;
+                if (playlistContents.length === 0 && !petrolVideoUrl) return;
                 if (petrolVideoUrl) {
                     isPetrolVideoPlayingLeft = true;
                 } else {
-                    currentVideoIndex = (currentVideoIndex + 1) % blobUrls.length;
+                    currentVideoIndex = (currentVideoIndex + 1) % playlistContents.length;
+                    await loadVideoAtIndex(currentVideoIndex);
                 }
-                tick().then(() => videoElement?.play().catch(() => {}));
+                await tick();
+                videoElement?.play().catch(() => {});
             }
             return;
         }
 
         if (isPetrolVideoPlaying) {
             isPetrolVideoPlaying = false;
-            currentVideoIndex = blobUrls.length > 0
-                ? (currentVideoIndex + 1) % blobUrls.length
+            currentVideoIndex = playlistContents.length > 0
+                ? (currentVideoIndex + 1) % playlistContents.length
                 : 0;
-            tick().then(() => {
-                videoElement?.play().catch(() => {});
-                videoElement2?.play().catch(() => {});
-            });
+            await loadVideoAtIndex(currentVideoIndex);
+            await tick();
+            videoElement?.play().catch(() => {});
+            videoElement2?.play().catch(() => {});
             return;
         }
 
-        if (blobUrls.length === 0 && !petrolVideoUrl) return;
+        if (playlistContents.length === 0 && !petrolVideoUrl) return;
 
         if (videoElement && videoElement2) {
             if (
@@ -192,12 +314,12 @@
         if (petrolVideoUrl) {
             isPetrolVideoPlaying = true;
         } else {
-            currentVideoIndex = (currentVideoIndex + 1) % blobUrls.length;
+            currentVideoIndex = (currentVideoIndex + 1) % playlistContents.length;
+            await loadVideoAtIndex(currentVideoIndex);
         }
-        tick().then(() => {
-            videoElement?.play().catch(() => {});
-            if (videoElement2) videoElement2.play().catch(() => {});
-        });
+        await tick();
+        videoElement?.play().catch(() => {});
+        if (videoElement2) videoElement2.play().catch(() => {});
     };
 
     const handleVideoPlay = (isSecondVideo = false) => {
@@ -312,8 +434,7 @@
             const contents = await playlistService.getContents(uuid);
 
             if (!contents || contents.length === 0) {
-                blobUrls.forEach((url) => URL.revokeObjectURL(url));
-                blobUrls = [];
+                if (currentBlobUrl) { URL.revokeObjectURL(currentBlobUrl); currentBlobUrl = null; }
                 playlistContents = [];
                 currentVideoIndex = 0;
                 if (videoElement) {
@@ -324,34 +445,22 @@
                 return;
             }
 
-            const blobPromises = contents.map((content) =>
-                fileService.getFileBlob(content.fileUUID).catch((err) => {
-                    if (!navigator.onLine) {
-                        console.warn(
-                            `[Screen] File ${content.fileUUID} not available offline, not in cache`,
-                        );
-                    }
-                    return err;
-                }),
-            );
-
-            const blobs = await Promise.all(blobPromises);
-
-            blobUrls.forEach((url) => URL.revokeObjectURL(url));
-
+            // Pre-cache files to disk (Cache API) sequentially — minimal RAM usage
             const validContents: PlaylistContent[] = [];
-            const validBlobUrls: string[] = [];
-
-            blobs.forEach((blob, index) => {
-                if (blob && blob instanceof Blob) {
-                    validContents.push(contents[index]);
-                    validBlobUrls.push(URL.createObjectURL(blob));
+            for (const content of contents) {
+                const available = await fileService.precacheFile(content.fileUUID);
+                if (available) {
+                    validContents.push(content);
+                } else if (!navigator.onLine) {
+                    console.warn(`[Screen] File ${content.fileUUID} not available offline, not in cache`);
                 }
-            });
+            }
+
+            // OPFS could have taken over during async precache work — don't overwrite
+            if (isUsingOffline) return;
 
             if (validContents.length === 0) {
-                blobUrls.forEach((url) => URL.revokeObjectURL(url));
-                blobUrls = [];
+                if (currentBlobUrl) { URL.revokeObjectURL(currentBlobUrl); currentBlobUrl = null; }
                 playlistContents = [];
                 currentVideoIndex = 0;
                 if (videoElement) {
@@ -363,8 +472,10 @@
             }
 
             playlistContents = validContents;
-            blobUrls = validBlobUrls;
             currentVideoIndex = 0;
+
+            // Load only first video blob into memory
+            await loadVideoAtIndex(0);
         } catch (err) {
             if (err instanceof ApiError) {
                 error = err;
@@ -376,9 +487,6 @@
                     error: "Unknown",
                     detailedMessages: [],
                 });
-            }
-
-            if (blobUrls.length === 0) {
             }
         } finally {
             isLoadingPlaylist = false;
@@ -395,8 +503,7 @@
             const contents = await playlistService.getContents(uuid);
 
             if (!contents || contents.length === 0) {
-                blobUrlsRight.forEach((url) => URL.revokeObjectURL(url));
-                blobUrlsRight = [];
+                if (currentBlobUrlRight) { URL.revokeObjectURL(currentBlobUrlRight); currentBlobUrlRight = null; }
                 playlistContentsRight = [];
                 currentVideoIndexRight = 0;
                 if (videoElement2) {
@@ -407,33 +514,22 @@
                 return;
             }
 
-            const blobPromises = contents.map((content) =>
-                fileService.getFileBlob(content.fileUUID).catch((err) => {
-                    if (!navigator.onLine) {
-                        console.warn(
-                            `[Screen] File ${content.fileUUID} not available offline, not in cache`,
-                        );
-                    }
-                    return err;
-                }),
-            );
-
-            const blobs = await Promise.all(blobPromises);
-
-            blobUrlsRight.forEach((url) => URL.revokeObjectURL(url));
-
+            // Pre-cache files to disk (Cache API) sequentially — minimal RAM usage
             const validContents: PlaylistContent[] = [];
-            const validBlobUrls: string[] = [];
-
-            blobs.forEach((blob, index) => {
-                if (blob && blob instanceof Blob) {
-                    validContents.push(contents[index]);
-                    validBlobUrls.push(URL.createObjectURL(blob));
+            for (const content of contents) {
+                const available = await fileService.precacheFile(content.fileUUID);
+                if (available) {
+                    validContents.push(content);
+                } else if (!navigator.onLine) {
+                    console.warn(`[Screen] File ${content.fileUUID} not available offline, not in cache`);
                 }
-            });
+            }
+
+            // OPFS could have taken over during async precache work — don't overwrite
+            if (isUsingOffline) return;
 
             if (validContents.length === 0) {
-                blobUrlsRight = [];
+                if (currentBlobUrlRight) { URL.revokeObjectURL(currentBlobUrlRight); currentBlobUrlRight = null; }
                 playlistContentsRight = [];
                 currentVideoIndexRight = 0;
                 if (videoElement2) {
@@ -445,8 +541,10 @@
             }
 
             playlistContentsRight = validContents;
-            blobUrlsRight = validBlobUrls;
             currentVideoIndexRight = 0;
+
+            // Load only first video blob into memory
+            await loadVideoAtIndex(0, 'right');
         } catch (err) {
             if (err instanceof ApiError) {
                 errorRight = err;
@@ -500,14 +598,14 @@
     };
 
     $effect(() => {
+        if (isUsingOffline) return; // offline path: activePlaylistLeft/Right effects handle loading
+
         if (isDoubleWithTwoPlaylists) {
             if (!leftPlaylistUUID && !rightPlaylistUUID) {
                 untrack(() => {
-                    blobUrls.forEach((url) => URL.revokeObjectURL(url));
-                    blobUrls = [];
+                    if (currentBlobUrl) { URL.revokeObjectURL(currentBlobUrl); currentBlobUrl = null; }
                     playlistContents = [];
-                    blobUrlsRight.forEach((url) => URL.revokeObjectURL(url));
-                    blobUrlsRight = [];
+                    if (currentBlobUrlRight) { URL.revokeObjectURL(currentBlobUrlRight); currentBlobUrlRight = null; }
                     playlistContentsRight = [];
                 });
                 return;
@@ -520,8 +618,7 @@
                 untrack(() => loadPlaylist(playlistUUID));
             } else if (!playlistUUID) {
                 untrack(() => {
-                    blobUrls.forEach((url) => URL.revokeObjectURL(url));
-                    blobUrls = [];
+                    if (currentBlobUrl) { URL.revokeObjectURL(currentBlobUrl); currentBlobUrl = null; }
                     playlistContents = [];
                 });
             }
@@ -534,7 +631,129 @@
         }
     });
 
+    // ── Offline effects ───────────────────────────────────────────────────────
+    // Register each playlist for background sync. When a new version arrives,
+    // apply it immediately on first load or queue it as pending for after the
+    // current video finishes.
+
+    async function logOfflineReadiness(playlistUUID: string, side: 'left' | 'right') {
+        const pl = await getPlaylist(playlistUUID);
+        if (!pl || pl.items.length === 0) {
+            console.warn(`[Offline:${side}] ❌ Плейлист ${playlistUUID} — нет данных в IDB, видео НЕ готово к оффлайн`);
+            return;
+        }
+
+        const allVideos = await getAllVideoRecords();
+        const videoMap = new Map(allVideos.map(v => [v.id, v]));
+
+        let readyCount = 0;
+        for (const item of pl.items) {
+            const record = videoMap.get(item.id);
+            const inOpfs = await videoFileExists(item.id);
+            const status = record?.status ?? 'no_record';
+            const ready = status === 'ready' && inOpfs;
+            if (ready) readyCount++;
+            console.log(
+                `[Offline:${side}] ${ready ? '✅' : '❌'} ${item.id} | IDB: ${status} | OPFS: ${inOpfs ? 'есть' : 'нет'}`
+            );
+        }
+
+        if (readyCount === pl.items.length) {
+            console.log(`[Offline:${side}] ✅ Все ${readyCount}/${pl.items.length} видео готовы — работает БЕЗ интернета`);
+        } else {
+            console.warn(`[Offline:${side}] ⚠️ Готово ${readyCount}/${pl.items.length} видео — оффлайн НЕ полный`);
+        }
+    }
+
+    function applyOfflinePlaylist(pl: PlaylistRecord, side: 'left' | 'right') {
+        if (side === 'left') {
+            if (pl.version === loadedVersionLeft) return;
+            if (loadedVersionLeft === null && playlistContents.length > 0) {
+                // Legacy path is actively playing — wait for current video to end
+                // before switching to OPFS path, so playback is not interrupted
+                pendingPlaylistUpdateLeft = true;
+            } else if (loadedVersionLeft === null) {
+                // Nothing is playing yet — apply immediately
+                playlistContents = itemsToContents(pl.items);
+                currentVideoIndex = 0;
+                loadedVersionLeft = pl.version;
+                loadVideoAtIndex(0, 'left').then(async () => {
+                    await tick();
+                    videoElement?.play().catch(() => {});
+                });
+            } else {
+                // Already on offline path — queue update for after current video ends
+                pendingPlaylistUpdateLeft = true;
+            }
+        } else {
+            if (pl.version === loadedVersionRight) return;
+            if (loadedVersionRight === null && playlistContentsRight.length > 0) {
+                pendingPlaylistUpdateRight = true;
+            } else if (loadedVersionRight === null) {
+                playlistContentsRight = itemsToContents(pl.items);
+                currentVideoIndexRight = 0;
+                loadedVersionRight = pl.version;
+                loadVideoAtIndex(0, 'right').then(async () => {
+                    await tick();
+                    videoElement2?.play().catch(() => {});
+                });
+            } else {
+                pendingPlaylistUpdateRight = true;
+            }
+        }
+    }
+
     $effect(() => {
+        const uuid = leftPlaylistUUID;
+        if (!uuid || !$isOfflineReady) return;
+
+        // Load whatever is already in IDB immediately (only if has actual items)
+        getPlaylist(uuid).then((pl) => {
+            logOfflineReadiness(uuid, 'left');
+            if (pl && pl.items.length > 0) {
+                offlinePlaylistLeft = pl;
+                untrack(() => applyOfflinePlaylist(pl, 'left'));
+            }
+        });
+
+        // Register for future sync updates
+        return registerPlaylist(uuid, () => {
+            getPlaylist(uuid).then((pl) => {
+                logOfflineReadiness(uuid, 'left');
+                if (pl && pl.items.length > 0) {
+                    offlinePlaylistLeft = pl;
+                    applyOfflinePlaylist(pl, 'left');
+                }
+            });
+        });
+    });
+
+    $effect(() => {
+        const uuid = rightPlaylistUUID;
+        if (!uuid || !$isOfflineReady || !isDoubleWithTwoPlaylists) return;
+
+        getPlaylist(uuid).then((pl) => {
+            logOfflineReadiness(uuid, 'right');
+            if (pl && pl.items.length > 0) {
+                offlinePlaylistRight = pl;
+                untrack(() => applyOfflinePlaylist(pl, 'right'));
+            }
+        });
+
+        return registerPlaylist(uuid, () => {
+            getPlaylist(uuid).then((pl) => {
+                logOfflineReadiness(uuid, 'right');
+                if (pl && pl.items.length > 0) {
+                    offlinePlaylistRight = pl;
+                    applyOfflinePlaylist(pl, 'right');
+                }
+            });
+        });
+    });
+
+    $effect(() => {
+        if (isUsingOffline) return; // offline path: sync-scheduler handles updates
+
         const leftUuid = isDoubleWithTwoPlaylists
             ? leftPlaylistUUID
             : playlistUUID;
@@ -631,14 +850,7 @@
                 edgeVideoElement.paused &&
                 edgeVideoElement.readyState >= 2
             ) {
-                edgeVideoElement.play().catch((err) => {
-                    if (err.name !== "AbortError") {
-                        console.error(
-                            "[Screen] Failed to resume edge video:",
-                            err,
-                        );
-                    }
-                });
+                playEdgeWhenVisible(edgeVideoElement, EDGE_PLAY_DELAY_FIRST_MS);
             }
             if (
                 isDoubleScreen &&
@@ -646,28 +858,24 @@
                 edgeVideoElement2.paused &&
                 edgeVideoElement2.readyState >= 2
             ) {
-                edgeVideoElement2.play().catch((err) => {
-                    if (err.name !== "AbortError") {
-                        console.error(
-                            "[Screen] Failed to resume edge video 2:",
-                            err,
-                        );
-                    }
-                });
+                playEdgeWhenVisible(
+                    edgeVideoElement2,
+                    EDGE_PLAY_DELAY_SECOND_MS,
+                );
             }
         }
     });
 
     const hasContent = $derived(
-        blobUrls.length > 0 || blobUrlsRight.length > 0 || !!petrolVideoUrl,
+        playlistContents.length > 0 || playlistContentsRight.length > 0 || !!petrolVideoUrl,
     );
     const showLoader = $derived(
         (isLoadingPlaylist || isLoadingPlaylistRight) && !hasContent,
     );
 
     onDestroy(() => {
-        blobUrls.forEach((url) => URL.revokeObjectURL(url));
-        blobUrlsRight.forEach((url) => URL.revokeObjectURL(url));
+        if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
+        if (currentBlobUrlRight) URL.revokeObjectURL(currentBlobUrlRight);
         if (petrolVideoUrl) URL.revokeObjectURL(petrolVideoUrl);
         if (playlistCheckInterval) clearInterval(playlistCheckInterval);
     });
@@ -699,11 +907,15 @@
                         bind:this={edgeVideoElement}
                         class="edge-video"
                         src="/petrol-station/pn_edge.mp4"
-                        autoplay
                         muted
                         playsinline
-                        preload="auto"
+                        preload="metadata"
                         loop
+                        onloadeddata={(e) =>
+                            playEdgeWhenVisible(
+                                e.currentTarget,
+                                EDGE_PLAY_DELAY_FIRST_MS,
+                            )}
                     ></video>
                     <video
                         bind:this={videoElement}
@@ -712,17 +924,17 @@
                             ? isPetrolVideoPlayingLeft
                             : isPetrolVideoPlaying) && petrolVideoUrl
                             ? petrolVideoUrl
-                            : (blobUrls[currentVideoIndex] ?? "")}
+                            : (currentBlobUrl ?? "")}
                         autoplay
                         muted
                         playsinline
-                        preload="auto"
+                        preload="metadata"
                         loop={(isDoubleWithTwoPlaylists
                             ? !isPetrolVideoPlayingLeft
                             : !isPetrolVideoPlaying) &&
                             (isDoubleWithTwoPlaylists
-                                ? blobUrls.length <= 1 && !petrolVideoUrl
-                                : blobUrls.length === 1 && !petrolVideoUrl)}
+                                ? playlistContents.length <= 1 && !petrolVideoUrl
+                                : playlistContents.length === 1 && !petrolVideoUrl)}
                         onended={() => handleVideoEnded(false)}
                         onplay={() => handleVideoPlay(false)}
                         onerror={handleVideoError}
@@ -743,18 +955,18 @@
                             : isPetrolVideoPlaying) && petrolVideoUrl
                             ? petrolVideoUrl
                             : ((isDoubleWithTwoPlaylists
-                                  ? blobUrlsRight[currentVideoIndexRight]
-                                  : blobUrls[currentVideoIndex]) ?? "")}
+                                  ? currentBlobUrlRight
+                                  : currentBlobUrl) ?? "")}
                         autoplay
                         muted
                         playsinline
-                        preload="auto"
+                        preload="metadata"
                         loop={(isDoubleWithTwoPlaylists
                             ? !isPetrolVideoPlayingRight
                             : !isPetrolVideoPlaying) &&
                             (isDoubleWithTwoPlaylists
-                                ? blobUrlsRight.length <= 1 && !petrolVideoUrl
-                                : blobUrls.length === 1 && !petrolVideoUrl)}
+                                ? playlistContentsRight.length <= 1 && !petrolVideoUrl
+                                : playlistContents.length === 1 && !petrolVideoUrl)}
                         onended={() => handleVideoEnded(true)}
                         onplay={() => handleVideoPlay(true)}
                         onerror={isDoubleWithTwoPlaylists
@@ -765,11 +977,15 @@
                         bind:this={edgeVideoElement2}
                         class="edge-video"
                         src="/petrol-station/pn_edge.mp4"
-                        autoplay
                         muted
                         playsinline
-                        preload="auto"
+                        preload="metadata"
                         loop
+                        onloadeddata={(e) =>
+                            playEdgeWhenVisible(
+                                e.currentTarget,
+                                EDGE_PLAY_DELAY_SECOND_MS,
+                            )}
                     ></video>
                     {#if (isDoubleWithTwoPlaylists ? isPetrolVideoPlayingRight : isPetrolVideoPlaying) && screenSettings.length > 0}
                         <GasStationWidget
@@ -785,13 +1001,13 @@
                 class="screen-video"
                 src={isPetrolVideoPlaying && petrolVideoUrl
                     ? petrolVideoUrl
-                    : blobUrls[currentVideoIndex]}
+                    : currentBlobUrl}
                 autoplay
                 muted
                 playsinline
-                preload="auto"
+                preload="metadata"
                 loop={!isPetrolVideoPlaying &&
-                    blobUrls.length === 1 &&
+                    playlistContents.length === 1 &&
                     !petrolVideoUrl}
                 onended={() => handleVideoEnded(false)}
                 onplay={() => handleVideoPlay(false)}

@@ -14,10 +14,14 @@ export const API_CONFIG = {
             createLog: (dashboardUUID: string) => `${API_BASE_V1_URL}/dashboards/${dashboardUUID}/logs`,
             getSettings: (dashboardUUID: string) =>
                 `${API_BASE_V1_URL}/dashboards/${dashboardUUID}/settings`,
+            getManifest: (dashboardUUID: string) =>
+                `${API_BASE_V1_URL}/dashboards/${dashboardUUID}/manifest`,
         },
         playlists: {
             getPlaylist: (playlistUUID: string) =>
                 `${API_BASE_V1_URL}/playlists/${playlistUUID}/contents/sort`,
+            getManifest: (playlistUUID: string) =>
+                `${API_BASE_V1_URL}/playlists/${playlistUUID}/manifest`,
         },
         files: {
             getFile: (fileUUID: string) =>

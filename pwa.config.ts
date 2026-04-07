@@ -2,16 +2,6 @@ import type { VitePWAOptions } from 'vite-plugin-pwa';
 
 export const pwaConfig: Partial<VitePWAOptions> = {
 	registerType: 'autoUpdate',
-	includeAssets: [
-		'favicons/favicon.ico',
-		'favicons/favicon-16x16.png',
-		'favicons/favicon-32x32.png',
-		'favicons/favicon-96x96.png',
-		'favicons/apple-touch-icon.png',
-		'favicons/android-chrome-192x192.png',
-		'favicons/android-chrome-512x512.png',
-		'fonts/**/*.ttf'
-	],
 	manifest: {
 		name: 'Smart City',
 		short_name: 'Smart City',
@@ -38,8 +28,10 @@ export const pwaConfig: Partial<VitePWAOptions> = {
 			}
 		]
 	},
+	includeAssets: ['petrol-station/pn_edge.mp4'],
 	workbox: {
-		globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,ttf,jpg,JPG,jpeg,JPEG}'],
+		globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,ttf}'],
+		globIgnores: ['airlines/**', 'petrol-station/**'],
 		navigationPreload: false,
 		navigateFallback: '/index.html',
 		navigateFallbackDenylist: [
@@ -50,7 +42,7 @@ export const pwaConfig: Partial<VitePWAOptions> = {
 		clientsClaim: true,
 		runtimeCaching: [
 			{
-				urlPattern: /^https:\/\/.*rgb\.kg.*\/smart-city\/api\/v1\/dashboards\/.*\/solutions/i,
+				urlPattern: /\/smart-city\/api\/v1\/dashboards\/.*\/solutions/i,
 				handler: 'NetworkFirst',
 				options: {
 					cacheName: 'api-dashboards',
@@ -61,11 +53,26 @@ export const pwaConfig: Partial<VitePWAOptions> = {
 					cacheableResponse: {
 						statuses: [0, 200]
 					},
-					networkTimeoutSeconds: 10
+					networkTimeoutSeconds: 3
 				}
 			},
 			{
-				urlPattern: /^https:\/\/.*rgb\.kg.*\/smart-city\/api\/v1\/playlists\/.*\/contents/i,
+				urlPattern: /\/smart-city\/api\/v1\/dashboards\/.*\/settings/i,
+				handler: 'NetworkFirst',
+				options: {
+					cacheName: 'api-dashboards',
+					expiration: {
+						maxEntries: 10,
+						maxAgeSeconds: 60 * 60 * 24 * 30
+					},
+					cacheableResponse: {
+						statuses: [0, 200]
+					},
+					networkTimeoutSeconds: 3
+				}
+			},
+			{
+				urlPattern: /\/smart-city\/api\/v1\/playlists\/.*\/contents/i,
 				handler: 'NetworkFirst',
 				options: {
 					cacheName: 'api-playlists',
@@ -76,11 +83,11 @@ export const pwaConfig: Partial<VitePWAOptions> = {
 					cacheableResponse: {
 						statuses: [0, 200]
 					},
-					networkTimeoutSeconds: 10
+					networkTimeoutSeconds: 3
 				}
 			},
 			{
-				urlPattern: /^https:\/\/.*rgb\.kg.*\/smart-city\/api\/v1\/files\/.*\/dashboard/i,
+				urlPattern: /\/smart-city\/api\/v1\/files\/.*\/dashboard/i,
 				handler: 'NetworkFirst',
 				options: {
 					cacheName: 'api-files',
@@ -91,7 +98,7 @@ export const pwaConfig: Partial<VitePWAOptions> = {
 					cacheableResponse: {
 						statuses: [0, 200]
 					},
-					networkTimeoutSeconds: 30
+					networkTimeoutSeconds: 5
 				}
 			}
 		]
