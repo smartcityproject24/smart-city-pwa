@@ -9,6 +9,39 @@ const VIDEO_CACHE_NAME = "video-blobs";
  */
 export const fileService = {
     /**
+     * Кеширует файл на диск (Cache API) без загрузки blob в JS-память.
+     * Если файл уже в кеше — ничего не делает.
+     */
+    async precacheFile(fileUUID: string, useRedirect?: boolean): Promise<boolean> {
+        const url = useRedirect
+            ? API_CONFIG.endpoints.files.getFileRedirect(fileUUID)
+            : API_CONFIG.endpoints.files.getFile(fileUUID);
+
+        if ("caches" in window) {
+            try {
+                const cache = await caches.open(VIDEO_CACHE_NAME);
+                const cached = await cache.match(url);
+                if (cached) return true;
+            } catch {}
+        }
+
+        try {
+            const response = await apiRequestRaw(url);
+            if (!response.ok) return false;
+
+            if ("caches" in window) {
+                try {
+                    const cache = await caches.open(VIDEO_CACHE_NAME);
+                    await cache.put(url, response);
+                } catch {}
+            }
+            return true;
+        } catch {
+            return false;
+        }
+    },
+
+    /**
      * Получает blob файла через redirect
      * @param fileUUID - UUID файла
      * @returns Promise<Blob> - blob данных файла

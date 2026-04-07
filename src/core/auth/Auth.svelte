@@ -4,6 +4,8 @@
     import type { AuthContext } from "./types";
     import type { Snippet } from "svelte";
     import { clearAllApiCache } from "../pwa/cache";
+    import { clearAllOfflineDB } from "../offline/offline-db";
+    import { clearAllVideoFiles } from "../offline/opfs";
 
     interface Props {
         children?: Snippet;
@@ -74,7 +76,11 @@
             localStorage.removeItem(REFRESH_KEY);
             localStorage.removeItem(EXPIRES_AT_KEY);
 
-            await clearAllApiCache();
+            await Promise.all([
+                clearAllApiCache(),
+                clearAllOfflineDB(),
+                clearAllVideoFiles(),
+            ]);
         }
     };
 

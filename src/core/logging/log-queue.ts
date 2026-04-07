@@ -6,8 +6,36 @@ import {
 } from "./log-storage";
 import { isOnline } from "./network-monitor";
 import { isApiClientReady } from "@api/client";
+import { DashboardLogEventType, type CreateDashboardLogRequest } from "@api/types/log.types";
 
 const BATCH_SIZE = 10;
+
+const VALID_LOG_EVENT_TYPES = new Set<string>(Object.values(DashboardLogEventType));
+
+const LEGACY_TYPE_MAP: Record<string, DashboardLogEventType> = {
+    VIDEO_ERROR: DashboardLogEventType.VIDEO_ERROR,
+};
+
+/**
+ * Normalizes log data to fix stale logEventType values stored in IndexedDB
+ * from older versions of the app (e.g. "VIDEO_ERROR" → "ERROR").
+ * Returns null if the log is invalid and should be discarded.
+ */
+function normalizeLegacyLogData(
+    data: CreateDashboardLogRequest
+): CreateDashboardLogRequest | null {
+    const type = data.logEventType as string;
+
+    if (VALID_LOG_EVENT_TYPES.has(type)) {
+        return data;
+    }
+
+    if (type in LEGACY_TYPE_MAP) {
+        return { ...data, logEventType: LEGACY_TYPE_MAP[type] };
+    }
+
+    return null;
+}
 
 /**
  * Проверяет, есть ли токен для отправки логов
@@ -41,8 +69,18 @@ async function sendLogsBatch(
     let failed = 0;
 
     for (const log of logs) {
+        const normalizedData = normalizeLegacyLogData(log.data);
+
+        if (!normalizedData) {
+            console.warn(
+                `[LogQueue] Discarding log ${log.id} with unknown logEventType: ${log.data.logEventType}`
+            );
+            await markAsSent(log.id);
+            continue;
+        }
+
         try {
-            await logService.createLog(log.dashboardUUID, log.data);
+            await logService.createLog(log.dashboardUUID, normalizedData);
             await markAsSent(log.id);
             success++;
         } catch (error) {
