@@ -21,6 +21,24 @@
     import { SplashLogo } from "@components/ui";
     import { GasStationWidget, BoardTypesEnum } from "@/widgets/gas-station";
     import type { PlaylistsItem } from "@api/types/dashboard.types";
+    import { widgetService } from "@api/services/widget.service";
+    import type { ResolvedLibraryWidget } from "@api/types/widget.types";
+    import {
+        getLibraryWidgetUuidFromBlocks,
+    } from "@components/widget/static-widget-codes";
+
+    const LIB_VIDEO_TYPES = new Set(["mp4", "webm", "ogg", "mov", "m4v"]);
+    const LIB_IMAGE_TYPES = new Set([
+        "png",
+        "jpg",
+        "jpeg",
+        "gif",
+        "webp",
+        "svg",
+        "bmp",
+    ]);
+
+    const LIB_LOG = "[Screen:LibraryWidget]";
 
     let {
         blocks = [],
@@ -46,6 +64,8 @@
                 settingValue: string;
             }[];
             playlists?: PlaylistsItem[];
+            /** инстанс виджета с конструктора, если пришёл на уровне экрана */
+            widgetUUID?: string;
         };
     } = $props();
 
@@ -127,6 +147,12 @@
     let pendingPlaylistUpdateLeft = $state(false);
     let pendingPlaylistUpdateRight = $state(false);
 
+    let libraryPlaybackPhase = $state<"playlist" | "library">("playlist");
+    let resolvedLibraryWidget = $state<ResolvedLibraryWidget | null>(null);
+    let libraryWidgetBlobUrl = $state<string | null>(null);
+    let isFetchingLibraryWidget = $state(false);
+    let libraryWidgetVideoEl = $state<HTMLVideoElement | undefined>(undefined);
+
     // Check if there are any widget blocks
     const hasWidgets = $derived(
         blocks.some((block) => String(block.type).toUpperCase() === "WIDGET"),
@@ -158,6 +184,56 @@
             ? payloadPlaylists[0]?.playlistUUID
             : undefined,
     );
+
+    const libraryWidgetUuid = $derived.by(() => {
+        const fromBlocks = getLibraryWidgetUuidFromBlocks(blocks);
+        if (fromBlocks) return fromBlocks;
+        const w = payload?.widgetUUID;
+        if (typeof w === "string" && w.trim().length >= 8) return w.trim();
+        return null;
+    });
+    const libraryInterleaveActive = $derived(
+        Boolean(
+            libraryWidgetUuid &&
+                !isDoubleScreen &&
+                !isDoubleWithTwoPlaylists &&
+                !petrolVideoFileUUID,
+        ),
+    );
+
+    /** Сводка в консоль при смене условий (ищите префикс [Screen:LibraryWidget]) */
+    $effect(() => {
+        const wid = libraryWidgetUuid;
+        const active = libraryInterleaveActive;
+        const reasons: string[] = [];
+        if (!wid) reasons.push("нет widgetUUID в blocks/payload");
+        if (isDoubleScreen) reasons.push("isDoubleScreen (АЗС двойной)");
+        if (isDoubleWithTwoPlaylists) reasons.push("isDoubleWithTwoPlaylists");
+        if (petrolVideoFileUUID) reasons.push("есть PETROL_STATION_VIDEO");
+        console.info(`${LIB_LOG} derived`, {
+            screenUUID: uuid ?? null,
+            libraryWidgetUuid: wid,
+            libraryInterleaveActive: active,
+            interleaveBlockedBy: active ? null : reasons,
+            isReady: $isReady,
+            playlistItems: playlistContents.length,
+            phase: libraryPlaybackPhase,
+            hasVisual: libraryWidgetHasVisual,
+            fetching: isFetchingLibraryWidget,
+        });
+    });
+    const libraryWidgetHasVisual = $derived(
+        Boolean(
+            resolvedLibraryWidget &&
+                (resolvedLibraryWidget.html.length > 0 ||
+                    (resolvedLibraryWidget.fileUUID &&
+                        (LIB_VIDEO_TYPES.has(resolvedLibraryWidget.fileType) ||
+                            LIB_IMAGE_TYPES.has(
+                                resolvedLibraryWidget.fileType,
+                            )))),
+        ),
+    );
+
     const isFullscreen = $derived(width == null || height == null);
     const screenStyle = $derived(
         isFullscreen
@@ -208,6 +284,110 @@
         }
     };
 
+    function revokeLibraryWidgetBlob() {
+        if (libraryWidgetBlobUrl) {
+            console.info(`${LIB_LOG} revoke blob URL`);
+            URL.revokeObjectURL(libraryWidgetBlobUrl);
+            libraryWidgetBlobUrl = null;
+        }
+    }
+
+    async function loadLibraryWidgetAsset(fileUUID: string): Promise<void> {
+        console.info(`${LIB_LOG} media request`, {
+            fileUUID,
+            offline: isUsingOffline,
+        });
+        revokeLibraryWidgetBlob();
+        try {
+            let newUrl: string;
+            if (isUsingOffline) {
+                newUrl = await getVideoObjectUrl(fileUUID);
+            } else {
+                const blob = await fileService.getFileBlob(fileUUID);
+                if (!(blob instanceof Blob)) {
+                    console.warn(`${LIB_LOG} media: ответ не Blob`, { fileUUID });
+                    return;
+                }
+                newUrl = URL.createObjectURL(blob);
+            }
+            libraryWidgetBlobUrl = newUrl;
+            console.info(`${LIB_LOG} media OK`, {
+                fileUUID,
+                blobUrlPrefix: newUrl.slice(0, 32) + "…",
+            });
+        } catch (err) {
+            console.warn(`${LIB_LOG} media FAILED`, { fileUUID, err });
+        }
+    }
+
+    async function startLibrarySlideMedia(): Promise<void> {
+        const r = resolvedLibraryWidget;
+        if (!r) {
+            console.warn(`${LIB_LOG} startLibrarySlideMedia: нет resolvedLibraryWidget`);
+            return;
+        }
+        await tick();
+        if (r.fileUUID && LIB_VIDEO_TYPES.has(r.fileType) && libraryWidgetBlobUrl) {
+            const el = libraryWidgetVideoEl;
+            if (el) {
+                el.currentTime = 0;
+                void el.play().catch((e) =>
+                    console.warn(`${LIB_LOG} play() виджет-видео`, e),
+                );
+                console.info(`${LIB_LOG} старт видео фона виджета`);
+            } else {
+                console.warn(
+                    `${LIB_LOG} нет ref на <video> виджета (ещё не смонтирован?)`,
+                    { hasBlob: Boolean(libraryWidgetBlobUrl) },
+                );
+            }
+        } else if (r.html.length > 0) {
+            console.info(`${LIB_LOG} слайд: HTML overlay / только HTML`, {
+                htmlChars: r.html.length,
+                hasBlob: Boolean(libraryWidgetBlobUrl),
+            });
+        } else if (
+            r.fileUUID &&
+            LIB_IMAGE_TYPES.has(r.fileType) &&
+            libraryWidgetBlobUrl
+        ) {
+            console.info(`${LIB_LOG} слайд: картинка`, { fileUUID: r.fileUUID });
+        } else {
+            console.warn(`${LIB_LOG} слайд: нечего показать (пустой payload?)`, {
+                fileUUID: r.fileUUID,
+                fileType: r.fileType,
+                htmlChars: r.html.length,
+            });
+        }
+    }
+
+    async function finishLibrarySlideAndGoToPlaylist(): Promise<void> {
+        console.info(`${LIB_LOG} конец слайда виджета → плейлист`);
+        libraryWidgetVideoEl?.pause();
+        if (playlistContents.length === 0) {
+            if (libraryWidgetHasVisual) {
+                libraryPlaybackPhase = "library";
+                await tick();
+                await startLibrarySlideMedia();
+            } else {
+                libraryPlaybackPhase = "playlist";
+                console.warn(
+                    `${LIB_LOG} solo: нет контента виджета — не зацикливаем пустой library`,
+                );
+            }
+            return;
+        }
+        libraryPlaybackPhase = "playlist";
+        currentVideoIndex = (currentVideoIndex + 1) % playlistContents.length;
+        await loadVideoAtIndex(currentVideoIndex);
+        await tick();
+        videoElement?.play().catch(() => {});
+        console.info(`${LIB_LOG} плейлист`, {
+            index: currentVideoIndex,
+            items: playlistContents.length,
+        });
+    }
+
     const handleVideoEnded = async (isSecondVideo = false) => {
         // Apply a pending offline playlist update after the current video ends
         // so playback is never interrupted mid-video
@@ -234,6 +414,43 @@
                 await loadVideoAtIndex(0, 'right');
                 await tick();
                 videoElement2?.play().catch(() => {});
+                return;
+            }
+        }
+
+        if (
+            libraryInterleaveActive &&
+            !isSecondVideo &&
+            libraryPlaybackPhase === "playlist" &&
+            !isPetrolVideoPlaying &&
+            !isPetrolVideoPlayingLeft &&
+            playlistContents.length > 0
+        ) {
+            const canShowWidgetSlide =
+                libraryWidgetHasVisual || isFetchingLibraryWidget;
+            if (!canShowWidgetSlide) {
+                console.warn(
+                    `${LIB_LOG} слот виджета пропущен: нет данных для показа (часто 403 на GET /widgets/… для роли дашборда — нужен доступ на бэке). Плейлист без паузы на чёрный экран.`,
+                    {
+                        currentVideoIndex,
+                        hasResolved: Boolean(resolvedLibraryWidget),
+                        hasVisual: libraryWidgetHasVisual,
+                        fetching: isFetchingLibraryWidget,
+                    },
+                );
+                // не переходим в library — ниже сработает обычное переключение ролика
+            } else {
+                console.info(`${LIB_LOG} ролик плейлиста закончился → фаза library`, {
+                    currentVideoIndex,
+                    hasResolved: Boolean(resolvedLibraryWidget),
+                    hasVisual: libraryWidgetHasVisual,
+                    fetching: isFetchingLibraryWidget,
+                });
+                videoElement?.pause();
+                libraryPlaybackPhase = "library";
+                await tick();
+                await tick();
+                await startLibrarySlideMedia();
                 return;
             }
         }
@@ -295,7 +512,13 @@
             return;
         }
 
-        if (playlistContents.length === 0 && !petrolVideoUrl) return;
+        if (
+            playlistContents.length === 0 &&
+            !petrolVideoUrl &&
+            !(libraryInterleaveActive && libraryWidgetHasVisual)
+        ) {
+            return;
+        }
 
         if (videoElement && videoElement2) {
             if (
@@ -631,6 +854,123 @@
         }
     });
 
+    $effect(() => {
+        if (!libraryInterleaveActive) {
+            console.info(`${LIB_LOG} fetch effect: interleave выкл — сброс состояния`);
+            libraryPlaybackPhase = "playlist";
+            resolvedLibraryWidget = null;
+            revokeLibraryWidgetBlob();
+            isFetchingLibraryWidget = false;
+            return;
+        }
+        const wid = libraryWidgetUuid;
+        if (!$isReady || !wid) {
+            console.info(`${LIB_LOG} fetch effect: ждём API или нет UUID`, {
+                isReady: $isReady,
+                wid,
+            });
+            resolvedLibraryWidget = null;
+            revokeLibraryWidgetBlob();
+            return;
+        }
+
+        let cancelled = false;
+        isFetchingLibraryWidget = true;
+        console.info(`${LIB_LOG} fetch effect: старт загрузки виджета`, { wid });
+        (async () => {
+            try {
+                const resolved = await widgetService.resolveForPlayback(wid);
+                if (cancelled) {
+                    console.info(`${LIB_LOG} fetch: отменено (размонт/смена UUID)`);
+                    return;
+                }
+                resolvedLibraryWidget = resolved;
+                if (resolved.fileUUID) {
+                    await loadLibraryWidgetAsset(resolved.fileUUID);
+                } else {
+                    console.info(`${LIB_LOG} нет fileUUID у виджета — только HTML или пусто`);
+                    revokeLibraryWidgetBlob();
+                }
+                console.info(`${LIB_LOG} fetch effect: готово`, {
+                    hasVisual:
+                        resolved.html.length > 0 ||
+                        Boolean(resolved.fileUUID),
+                });
+            } catch (e) {
+                console.error(`${LIB_LOG} виджет API ошибка`, e);
+                if (e instanceof ApiError && e.code === 403) {
+                    console.warn(
+                        `${LIB_LOG} 403: токен дашборда не имеет права на /widgets/{uuid}. Разрешите GET /widgets/** для устройства или отдавайте данные виджета в ответе published solution.`,
+                    );
+                }
+                if (!cancelled) {
+                    resolvedLibraryWidget = null;
+                    revokeLibraryWidgetBlob();
+                }
+            } finally {
+                if (!cancelled) isFetchingLibraryWidget = false;
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    });
+
+    $effect(() => {
+        if (!libraryInterleaveActive || !resolvedLibraryWidget) return;
+        if (!libraryWidgetHasVisual) return;
+        if (playlistContents.length > 0) return;
+        if (libraryPlaybackPhase !== "playlist") return;
+        if (isFetchingLibraryWidget) return;
+        console.info(`${LIB_LOG} solo: только виджет, без роликов плейлиста`);
+        libraryPlaybackPhase = "library";
+        void (async () => {
+            await tick();
+            await tick();
+            await startLibrarySlideMedia();
+        })();
+    });
+
+    $effect(() => {
+        if (!libraryInterleaveActive) return;
+        if (libraryPlaybackPhase !== "library") return;
+        const r = resolvedLibraryWidget;
+        if (!r) return;
+        const hasVideoBg =
+            Boolean(r.fileUUID) &&
+            LIB_VIDEO_TYPES.has(r.fileType) &&
+            Boolean(libraryWidgetBlobUrl);
+        if (hasVideoBg) return;
+        const ms = Math.max(1, r.durationSec) * 1000;
+        console.info(`${LIB_LOG} таймер слайда (html/картинка)`, { ms });
+        const id = window.setTimeout(() => {
+            console.info(`${LIB_LOG} таймер слайда истёк`);
+            void finishLibrarySlideAndGoToPlaylist();
+        }, ms);
+        return () => clearTimeout(id);
+    });
+
+    /** Если уже в library, а контента так и нет (403 и т.д.) — не оставляем чёрный экран */
+    $effect(() => {
+        if (!libraryInterleaveActive) return;
+        if (libraryPlaybackPhase !== "library") return;
+        if (libraryWidgetHasVisual || isFetchingLibraryWidget) return;
+        if (playlistContents.length === 0) {
+            libraryPlaybackPhase = "playlist";
+            console.warn(
+                `${LIB_LOG} recovery: library без контента, плейлист пуст — сброс фазы`,
+            );
+            return;
+        }
+        console.warn(
+            `${LIB_LOG} recovery: фаза library без контента → возврат к плейлисту (тот же индекс)`,
+        );
+        libraryPlaybackPhase = "playlist";
+        void tick();
+        videoElement?.play().catch(() => {});
+    });
+
     // ── Offline effects ───────────────────────────────────────────────────────
     // Register each playlist for background sync. When a new version arrives,
     // apply it immediately on first load or queue it as pending for after the
@@ -867,16 +1207,25 @@
     });
 
     const hasContent = $derived(
-        playlistContents.length > 0 || playlistContentsRight.length > 0 || !!petrolVideoUrl,
+        playlistContents.length > 0 ||
+            playlistContentsRight.length > 0 ||
+            !!petrolVideoUrl ||
+            (libraryInterleaveActive && libraryWidgetHasVisual),
     );
     const showLoader = $derived(
-        (isLoadingPlaylist || isLoadingPlaylistRight) && !hasContent,
+        (isLoadingPlaylist ||
+            isLoadingPlaylistRight ||
+            (libraryInterleaveActive &&
+                isFetchingLibraryWidget &&
+                !libraryWidgetHasVisual)) &&
+            !hasContent,
     );
 
     onDestroy(() => {
         if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
         if (currentBlobUrlRight) URL.revokeObjectURL(currentBlobUrlRight);
         if (petrolVideoUrl) URL.revokeObjectURL(petrolVideoUrl);
+        revokeLibraryWidgetBlob();
         if (playlistCheckInterval) clearInterval(playlistCheckInterval);
     });
 </script>
@@ -999,20 +1348,56 @@
             <video
                 bind:this={videoElement}
                 class="screen-video"
+                class:screen-video--behind-library={libraryInterleaveActive &&
+                    libraryPlaybackPhase === "library" &&
+                    libraryWidgetHasVisual}
                 src={isPetrolVideoPlaying && petrolVideoUrl
                     ? petrolVideoUrl
-                    : currentBlobUrl}
+                    : (currentBlobUrl ?? "")}
                 autoplay
                 muted
                 playsinline
                 preload="metadata"
-                loop={!isPetrolVideoPlaying &&
+                loop={!libraryInterleaveActive &&
+                    !isPetrolVideoPlaying &&
                     playlistContents.length === 1 &&
                     !petrolVideoUrl}
                 onended={() => handleVideoEnded(false)}
                 onplay={() => handleVideoPlay(false)}
                 onerror={handleVideoError}
             ></video>
+            {#if libraryInterleaveActive && libraryPlaybackPhase === "library" && resolvedLibraryWidget}
+                <div class="library-widget-layer">
+                    {#if libraryWidgetBlobUrl && resolvedLibraryWidget.fileUUID && LIB_VIDEO_TYPES.has(resolvedLibraryWidget.fileType)}
+                        <video
+                            bind:this={libraryWidgetVideoEl}
+                            class="library-bg"
+                            src={libraryWidgetBlobUrl}
+                            autoplay
+                            muted
+                            playsinline
+                            preload="metadata"
+                            onloadeddata={(e) =>
+                                void e.currentTarget.play().catch(() => {})}
+                            onended={() => void finishLibrarySlideAndGoToPlaylist()}
+                        ></video>
+                    {:else if libraryWidgetBlobUrl && resolvedLibraryWidget.fileUUID && LIB_IMAGE_TYPES.has(resolvedLibraryWidget.fileType)}
+                        <img
+                            class="library-bg"
+                            src={libraryWidgetBlobUrl}
+                            alt=""
+                        />
+                    {/if}
+                    {#if resolvedLibraryWidget.html}
+                        <iframe
+                            title="library-widget-html"
+                            class="library-html"
+                            srcdoc={resolvedLibraryWidget.html}
+                            sandbox="allow-scripts allow-same-origin"
+                        ></iframe>
+                    {/if}
+                </div>
+            {/if}
             {#if isPetrolVideoPlaying && screenSettings.length > 0}
                 <GasStationWidget
                     boardType={BoardTypesEnum.PETROL_STATION}
@@ -1039,6 +1424,36 @@
         height: 100%;
         width: 100%;
         object-fit: fill;
+        pointer-events: none;
+    }
+
+    .screen-video--behind-library {
+        opacity: 0;
+    }
+
+    .library-widget-layer {
+        position: absolute;
+        inset: 0;
+        z-index: 4;
+        pointer-events: none;
+    }
+
+    .library-bg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: fill;
+        pointer-events: none;
+    }
+
+    .library-html {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        border: 0;
+        background: transparent;
         pointer-events: none;
     }
 

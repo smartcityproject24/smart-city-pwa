@@ -87,6 +87,21 @@ export const pwaConfig: Partial<VitePWAOptions> = {
 				}
 			},
 			{
+				urlPattern: /\/smart-city\/api\/v1\/widgets\//i,
+				handler: 'NetworkFirst',
+				options: {
+					cacheName: 'api-widgets',
+					expiration: {
+						maxEntries: 50,
+						maxAgeSeconds: 60 * 60 * 24
+					},
+					cacheableResponse: {
+						statuses: [0, 200]
+					},
+					networkTimeoutSeconds: 5
+				}
+			},
+			{
 				urlPattern: /\/smart-city\/api\/v1\/files\/.*\/dashboard/i,
 				handler: 'NetworkFirst',
 				options: {

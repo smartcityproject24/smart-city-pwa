@@ -4,6 +4,10 @@
     import type { ComponentsContext } from "@core/types";
     import type { Component } from "svelte";
     import { Widget } from "@components/widget";
+    import {
+        getLibraryWidgetUuidFromBlocks,
+        isStaticWidgetBlock,
+    } from "@components/widget/static-widget-codes";
 
     interface Props {
         blocks: Block[];
@@ -19,8 +23,26 @@
     const isSettingBlock = (b: Block) =>
         String(b.type).toLowerCase() === "setting";
 
-    const widgetBlocks = $derived(blocks.filter(isWidgetBlock));
+    const widgetBlocks = $derived(
+        blocks.filter(isWidgetBlock).filter(isStaticWidgetBlock),
+    );
     const otherBlocks = $derived(blocks.filter((b) => !isWidgetBlock(b) && !isSettingBlock(b)));
+
+    /** WIDGET с конструктора на одном уровне с SCREEN — в Screen не попадали из-за otherBlocks */
+    const rootLibraryWidgetBlocks = $derived(
+        blocks.filter(isWidgetBlock).filter((b) => !isStaticWidgetBlock(b)),
+    );
+
+    function blocksForScreen(screenBlock: Block): Block[] {
+        const nested = screenBlock.blocks ?? [];
+        if (getLibraryWidgetUuidFromBlocks(nested)) return nested;
+        if (rootLibraryWidgetBlocks.length === 0) return nested;
+        console.info("[BlockRenderer] SCREEN: добавлены библиотечные WIDGET-соседи", {
+            screenUUID: screenBlock.uuid ?? null,
+            mergedCount: rootLibraryWidgetBlocks.length,
+        });
+        return [...nested, ...rootLibraryWidgetBlocks];
+    }
 
     function getBlock(type: string | undefined): Component<any> | undefined {
         if (!type) return undefined;
@@ -43,6 +65,10 @@
 {#each otherBlocks as block}
     {#if getBlock(block.type)}
         {@const BlockComponent = getBlock(block.type)}
-        <BlockComponent {...block} />
+        {#if String(block.type).toUpperCase() === "SCREEN"}
+            <BlockComponent {...block} blocks={blocksForScreen(block)} />
+        {:else}
+            <BlockComponent {...block} />
+        {/if}
     {/if}
 {/each}
