@@ -21,6 +21,22 @@
     import { SplashLogo } from "@components/ui";
     import { GasStationWidget, BoardTypesEnum } from "@/widgets/gas-station";
     import type { PlaylistsItem } from "@api/types/dashboard.types";
+    import { widgetService } from "@api/services/widget.service";
+    import type { ResolvedLibraryWidget } from "@api/types/widget.types";
+    import {
+        getLibraryWidgetUuidFromBlocks,
+    } from "@components/widget/static-widget-codes";
+
+    const LIB_VIDEO_TYPES = new Set(["mp4", "webm", "ogg", "mov", "m4v"]);
+    const LIB_IMAGE_TYPES = new Set([
+        "png",
+        "jpg",
+        "jpeg",
+        "gif",
+        "webp",
+        "svg",
+        "bmp",
+    ]);
 
     let {
         blocks = [],
@@ -46,6 +62,8 @@
                 settingValue: string;
             }[];
             playlists?: PlaylistsItem[];
+            /** инстанс виджета с конструктора, если пришёл на уровне экрана */
+            widgetUUID?: string;
         };
     } = $props();
 
@@ -127,6 +145,12 @@
     let pendingPlaylistUpdateLeft = $state(false);
     let pendingPlaylistUpdateRight = $state(false);
 
+    let libraryPlaybackPhase = $state<"playlist" | "library">("playlist");
+    let resolvedLibraryWidget = $state<ResolvedLibraryWidget | null>(null);
+    let libraryWidgetBlobUrl = $state<string | null>(null);
+    let isFetchingLibraryWidget = $state(false);
+    let libraryWidgetVideoEl = $state<HTMLVideoElement | undefined>(undefined);
+
     // Check if there are any widget blocks
     const hasWidgets = $derived(
         blocks.some((block) => String(block.type).toUpperCase() === "WIDGET"),
@@ -158,6 +182,35 @@
             ? payloadPlaylists[0]?.playlistUUID
             : undefined,
     );
+
+    const libraryWidgetUuid = $derived.by(() => {
+        const fromBlocks = getLibraryWidgetUuidFromBlocks(blocks);
+        if (fromBlocks) return fromBlocks;
+        const w = payload?.widgetUUID;
+        if (typeof w === "string" && w.trim().length >= 8) return w.trim();
+        return null;
+    });
+    const libraryInterleaveActive = $derived(
+        Boolean(
+            libraryWidgetUuid &&
+                !isDoubleScreen &&
+                !isDoubleWithTwoPlaylists &&
+                !petrolVideoFileUUID,
+        ),
+    );
+
+    const libraryWidgetHasVisual = $derived(
+        Boolean(
+            resolvedLibraryWidget &&
+                (resolvedLibraryWidget.html.length > 0 ||
+                    (resolvedLibraryWidget.fileUUID &&
+                        (LIB_VIDEO_TYPES.has(resolvedLibraryWidget.fileType) ||
+                            LIB_IMAGE_TYPES.has(
+                                resolvedLibraryWidget.fileType,
+                            )))),
+        ),
+    );
+
     const isFullscreen = $derived(width == null || height == null);
     const screenStyle = $derived(
         isFullscreen
@@ -208,6 +261,75 @@
         }
     };
 
+    function revokeLibraryWidgetBlob() {
+        if (libraryWidgetBlobUrl) {
+            URL.revokeObjectURL(libraryWidgetBlobUrl);
+            libraryWidgetBlobUrl = null;
+        }
+    }
+
+    async function loadLibraryWidgetAsset(
+        fileUUID: string,
+        playbackFileType: string,
+    ): Promise<void> {
+        /** OPFS хранит только ролики плейлиста как {uuid}.mp4; файлы виджета туда не кладутся */
+        const opfsEligible =
+            isUsingOffline &&
+            LIB_VIDEO_TYPES.has(playbackFileType) &&
+            (await videoFileExists(fileUUID));
+        revokeLibraryWidgetBlob();
+        try {
+            let newUrl: string;
+            if (opfsEligible) {
+                newUrl = await getVideoObjectUrl(fileUUID);
+                libraryWidgetBlobUrl = newUrl;
+            } else {
+                const blob = await fileService.getFileBlob(fileUUID);
+                if (!(blob instanceof Blob)) {
+                    return;
+                }
+                newUrl = URL.createObjectURL(blob);
+                libraryWidgetBlobUrl = newUrl;
+            }
+        } catch {
+            /* фон виджета недоступен — остаётся HTML/плейлист */
+        }
+    }
+
+    async function startLibrarySlideMedia(): Promise<void> {
+        const r = resolvedLibraryWidget;
+        if (!r) {
+            return;
+        }
+        await tick();
+        if (r.fileUUID && LIB_VIDEO_TYPES.has(r.fileType) && libraryWidgetBlobUrl) {
+            const el = libraryWidgetVideoEl;
+            if (el) {
+                el.currentTime = 0;
+                void el.play().catch(() => {});
+            }
+        }
+    }
+
+    async function finishLibrarySlideAndGoToPlaylist(): Promise<void> {
+        libraryWidgetVideoEl?.pause();
+        if (playlistContents.length === 0) {
+            if (libraryWidgetHasVisual) {
+                libraryPlaybackPhase = "library";
+                await tick();
+                await startLibrarySlideMedia();
+            } else {
+                libraryPlaybackPhase = "playlist";
+            }
+            return;
+        }
+        libraryPlaybackPhase = "playlist";
+        currentVideoIndex = (currentVideoIndex + 1) % playlistContents.length;
+        await loadVideoAtIndex(currentVideoIndex);
+        await tick();
+        videoElement?.play().catch(() => {});
+    }
+
     const handleVideoEnded = async (isSecondVideo = false) => {
         // Apply a pending offline playlist update after the current video ends
         // so playback is never interrupted mid-video
@@ -234,6 +356,28 @@
                 await loadVideoAtIndex(0, 'right');
                 await tick();
                 videoElement2?.play().catch(() => {});
+                return;
+            }
+        }
+
+        if (
+            libraryInterleaveActive &&
+            !isSecondVideo &&
+            libraryPlaybackPhase === "playlist" &&
+            !isPetrolVideoPlaying &&
+            !isPetrolVideoPlayingLeft &&
+            playlistContents.length > 0
+        ) {
+            const canShowWidgetSlide =
+                libraryWidgetHasVisual || isFetchingLibraryWidget;
+            if (!canShowWidgetSlide) {
+                // не переходим в library — ниже сработает обычное переключение ролика
+            } else {
+                videoElement?.pause();
+                libraryPlaybackPhase = "library";
+                await tick();
+                await tick();
+                await startLibrarySlideMedia();
                 return;
             }
         }
@@ -295,7 +439,13 @@
             return;
         }
 
-        if (playlistContents.length === 0 && !petrolVideoUrl) return;
+        if (
+            playlistContents.length === 0 &&
+            !petrolVideoUrl &&
+            !(libraryInterleaveActive && libraryWidgetHasVisual)
+        ) {
+            return;
+        }
 
         if (videoElement && videoElement2) {
             if (
@@ -631,6 +781,98 @@
         }
     });
 
+    $effect(() => {
+        if (!libraryInterleaveActive) {
+            libraryPlaybackPhase = "playlist";
+            resolvedLibraryWidget = null;
+            revokeLibraryWidgetBlob();
+            isFetchingLibraryWidget = false;
+            return;
+        }
+        const wid = libraryWidgetUuid;
+        if (!$isReady || !wid) {
+            resolvedLibraryWidget = null;
+            revokeLibraryWidgetBlob();
+            return;
+        }
+
+        let cancelled = false;
+        isFetchingLibraryWidget = true;
+        (async () => {
+            try {
+                const resolved = await widgetService.resolveForPlayback(wid);
+                if (cancelled) {
+                    return;
+                }
+                resolvedLibraryWidget = resolved;
+                if (resolved.fileUUID) {
+                    await loadLibraryWidgetAsset(
+                        resolved.fileUUID,
+                        resolved.fileType,
+                    );
+                } else {
+                    revokeLibraryWidgetBlob();
+                }
+            } catch {
+                if (!cancelled) {
+                    resolvedLibraryWidget = null;
+                    revokeLibraryWidgetBlob();
+                }
+            } finally {
+                if (!cancelled) isFetchingLibraryWidget = false;
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    });
+
+    $effect(() => {
+        if (!libraryInterleaveActive || !resolvedLibraryWidget) return;
+        if (!libraryWidgetHasVisual) return;
+        if (playlistContents.length > 0) return;
+        if (libraryPlaybackPhase !== "playlist") return;
+        if (isFetchingLibraryWidget) return;
+        libraryPlaybackPhase = "library";
+        void (async () => {
+            await tick();
+            await tick();
+            await startLibrarySlideMedia();
+        })();
+    });
+
+    $effect(() => {
+        if (!libraryInterleaveActive) return;
+        if (libraryPlaybackPhase !== "library") return;
+        const r = resolvedLibraryWidget;
+        if (!r) return;
+        const hasVideoBg =
+            Boolean(r.fileUUID) &&
+            LIB_VIDEO_TYPES.has(r.fileType) &&
+            Boolean(libraryWidgetBlobUrl);
+        if (hasVideoBg) return;
+        const ms = Math.max(1, r.durationSec) * 1000;
+        const id = window.setTimeout(() => {
+            void finishLibrarySlideAndGoToPlaylist();
+        }, ms);
+        return () => clearTimeout(id);
+    });
+
+    /** Если уже в library, а контента так и нет (403 и т.д.) — не оставляем чёрный экран */
+    $effect(() => {
+        if (!libraryInterleaveActive) return;
+        if (libraryPlaybackPhase !== "library") return;
+        if (libraryWidgetHasVisual || isFetchingLibraryWidget) return;
+        if (playlistContents.length === 0) {
+            libraryPlaybackPhase = "playlist";
+            return;
+        }
+        libraryPlaybackPhase = "playlist";
+        void tick();
+        videoElement?.play().catch(() => {});
+    });
+
     // ── Offline effects ───────────────────────────────────────────────────────
     // Register each playlist for background sync. When a new version arrives,
     // apply it immediately on first load or queue it as pending for after the
@@ -867,16 +1109,25 @@
     });
 
     const hasContent = $derived(
-        playlistContents.length > 0 || playlistContentsRight.length > 0 || !!petrolVideoUrl,
+        playlistContents.length > 0 ||
+            playlistContentsRight.length > 0 ||
+            !!petrolVideoUrl ||
+            (libraryInterleaveActive && libraryWidgetHasVisual),
     );
     const showLoader = $derived(
-        (isLoadingPlaylist || isLoadingPlaylistRight) && !hasContent,
+        (isLoadingPlaylist ||
+            isLoadingPlaylistRight ||
+            (libraryInterleaveActive &&
+                isFetchingLibraryWidget &&
+                !libraryWidgetHasVisual)) &&
+            !hasContent,
     );
 
     onDestroy(() => {
         if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
         if (currentBlobUrlRight) URL.revokeObjectURL(currentBlobUrlRight);
         if (petrolVideoUrl) URL.revokeObjectURL(petrolVideoUrl);
+        revokeLibraryWidgetBlob();
         if (playlistCheckInterval) clearInterval(playlistCheckInterval);
     });
 </script>
@@ -999,20 +1250,56 @@
             <video
                 bind:this={videoElement}
                 class="screen-video"
+                class:screen-video--behind-library={libraryInterleaveActive &&
+                    libraryPlaybackPhase === "library" &&
+                    libraryWidgetHasVisual}
                 src={isPetrolVideoPlaying && petrolVideoUrl
                     ? petrolVideoUrl
-                    : currentBlobUrl}
+                    : (currentBlobUrl ?? "")}
                 autoplay
                 muted
                 playsinline
                 preload="metadata"
-                loop={!isPetrolVideoPlaying &&
+                loop={!libraryInterleaveActive &&
+                    !isPetrolVideoPlaying &&
                     playlistContents.length === 1 &&
                     !petrolVideoUrl}
                 onended={() => handleVideoEnded(false)}
                 onplay={() => handleVideoPlay(false)}
                 onerror={handleVideoError}
             ></video>
+            {#if libraryInterleaveActive && libraryPlaybackPhase === "library" && resolvedLibraryWidget}
+                <div class="library-widget-layer">
+                    {#if libraryWidgetBlobUrl && resolvedLibraryWidget.fileUUID && LIB_VIDEO_TYPES.has(resolvedLibraryWidget.fileType)}
+                        <video
+                            bind:this={libraryWidgetVideoEl}
+                            class="library-bg"
+                            src={libraryWidgetBlobUrl}
+                            autoplay
+                            muted
+                            playsinline
+                            preload="metadata"
+                            onloadeddata={(e) =>
+                                void e.currentTarget.play().catch(() => {})}
+                            onended={() => void finishLibrarySlideAndGoToPlaylist()}
+                        ></video>
+                    {:else if libraryWidgetBlobUrl && resolvedLibraryWidget.fileUUID && LIB_IMAGE_TYPES.has(resolvedLibraryWidget.fileType)}
+                        <img
+                            class="library-bg"
+                            src={libraryWidgetBlobUrl}
+                            alt=""
+                        />
+                    {/if}
+                    {#if resolvedLibraryWidget.html}
+                        <iframe
+                            title="library-widget-html"
+                            class="library-html"
+                            srcdoc={resolvedLibraryWidget.html}
+                            sandbox="allow-scripts allow-same-origin"
+                        ></iframe>
+                    {/if}
+                </div>
+            {/if}
             {#if isPetrolVideoPlaying && screenSettings.length > 0}
                 <GasStationWidget
                     boardType={BoardTypesEnum.PETROL_STATION}
@@ -1039,6 +1326,36 @@
         height: 100%;
         width: 100%;
         object-fit: fill;
+        pointer-events: none;
+    }
+
+    .screen-video--behind-library {
+        opacity: 0;
+    }
+
+    .library-widget-layer {
+        position: absolute;
+        inset: 0;
+        z-index: 4;
+        pointer-events: none;
+    }
+
+    .library-bg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: fill;
+        pointer-events: none;
+    }
+
+    .library-html {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        border: 0;
+        background: transparent;
         pointer-events: none;
     }
 
