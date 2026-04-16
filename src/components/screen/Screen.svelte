@@ -38,8 +38,6 @@
         "bmp",
     ]);
 
-    const LIB_LOG = "[Screen:LibraryWidget]";
-
     let {
         blocks = [],
         width = undefined,
@@ -201,27 +199,6 @@
         ),
     );
 
-    /** Сводка в консоль при смене условий (ищите префикс [Screen:LibraryWidget]) */
-    $effect(() => {
-        const wid = libraryWidgetUuid;
-        const active = libraryInterleaveActive;
-        const reasons: string[] = [];
-        if (!wid) reasons.push("нет widgetUUID в blocks/payload");
-        if (isDoubleScreen) reasons.push("isDoubleScreen (АЗС двойной)");
-        if (isDoubleWithTwoPlaylists) reasons.push("isDoubleWithTwoPlaylists");
-        if (petrolVideoFileUUID) reasons.push("есть PETROL_STATION_VIDEO");
-        console.info(`${LIB_LOG} derived`, {
-            screenUUID: uuid ?? null,
-            libraryWidgetUuid: wid,
-            libraryInterleaveActive: active,
-            interleaveBlockedBy: active ? null : reasons,
-            isReady: $isReady,
-            playlistItems: playlistContents.length,
-            phase: libraryPlaybackPhase,
-            hasVisual: libraryWidgetHasVisual,
-            fetching: isFetchingLibraryWidget,
-        });
-    });
     const libraryWidgetHasVisual = $derived(
         Boolean(
             resolvedLibraryWidget &&
@@ -286,44 +263,42 @@
 
     function revokeLibraryWidgetBlob() {
         if (libraryWidgetBlobUrl) {
-            console.info(`${LIB_LOG} revoke blob URL`);
             URL.revokeObjectURL(libraryWidgetBlobUrl);
             libraryWidgetBlobUrl = null;
         }
     }
 
-    async function loadLibraryWidgetAsset(fileUUID: string): Promise<void> {
-        console.info(`${LIB_LOG} media request`, {
-            fileUUID,
-            offline: isUsingOffline,
-        });
+    async function loadLibraryWidgetAsset(
+        fileUUID: string,
+        playbackFileType: string,
+    ): Promise<void> {
+        /** OPFS хранит только ролики плейлиста как {uuid}.mp4; файлы виджета туда не кладутся */
+        const opfsEligible =
+            isUsingOffline &&
+            LIB_VIDEO_TYPES.has(playbackFileType) &&
+            (await videoFileExists(fileUUID));
         revokeLibraryWidgetBlob();
         try {
             let newUrl: string;
-            if (isUsingOffline) {
+            if (opfsEligible) {
                 newUrl = await getVideoObjectUrl(fileUUID);
+                libraryWidgetBlobUrl = newUrl;
             } else {
                 const blob = await fileService.getFileBlob(fileUUID);
                 if (!(blob instanceof Blob)) {
-                    console.warn(`${LIB_LOG} media: ответ не Blob`, { fileUUID });
                     return;
                 }
                 newUrl = URL.createObjectURL(blob);
+                libraryWidgetBlobUrl = newUrl;
             }
-            libraryWidgetBlobUrl = newUrl;
-            console.info(`${LIB_LOG} media OK`, {
-                fileUUID,
-                blobUrlPrefix: newUrl.slice(0, 32) + "…",
-            });
-        } catch (err) {
-            console.warn(`${LIB_LOG} media FAILED`, { fileUUID, err });
+        } catch {
+            /* фон виджета недоступен — остаётся HTML/плейлист */
         }
     }
 
     async function startLibrarySlideMedia(): Promise<void> {
         const r = resolvedLibraryWidget;
         if (!r) {
-            console.warn(`${LIB_LOG} startLibrarySlideMedia: нет resolvedLibraryWidget`);
             return;
         }
         await tick();
@@ -331,38 +306,12 @@
             const el = libraryWidgetVideoEl;
             if (el) {
                 el.currentTime = 0;
-                void el.play().catch((e) =>
-                    console.warn(`${LIB_LOG} play() виджет-видео`, e),
-                );
-                console.info(`${LIB_LOG} старт видео фона виджета`);
-            } else {
-                console.warn(
-                    `${LIB_LOG} нет ref на <video> виджета (ещё не смонтирован?)`,
-                    { hasBlob: Boolean(libraryWidgetBlobUrl) },
-                );
+                void el.play().catch(() => {});
             }
-        } else if (r.html.length > 0) {
-            console.info(`${LIB_LOG} слайд: HTML overlay / только HTML`, {
-                htmlChars: r.html.length,
-                hasBlob: Boolean(libraryWidgetBlobUrl),
-            });
-        } else if (
-            r.fileUUID &&
-            LIB_IMAGE_TYPES.has(r.fileType) &&
-            libraryWidgetBlobUrl
-        ) {
-            console.info(`${LIB_LOG} слайд: картинка`, { fileUUID: r.fileUUID });
-        } else {
-            console.warn(`${LIB_LOG} слайд: нечего показать (пустой payload?)`, {
-                fileUUID: r.fileUUID,
-                fileType: r.fileType,
-                htmlChars: r.html.length,
-            });
         }
     }
 
     async function finishLibrarySlideAndGoToPlaylist(): Promise<void> {
-        console.info(`${LIB_LOG} конец слайда виджета → плейлист`);
         libraryWidgetVideoEl?.pause();
         if (playlistContents.length === 0) {
             if (libraryWidgetHasVisual) {
@@ -371,9 +320,6 @@
                 await startLibrarySlideMedia();
             } else {
                 libraryPlaybackPhase = "playlist";
-                console.warn(
-                    `${LIB_LOG} solo: нет контента виджета — не зацикливаем пустой library`,
-                );
             }
             return;
         }
@@ -382,10 +328,6 @@
         await loadVideoAtIndex(currentVideoIndex);
         await tick();
         videoElement?.play().catch(() => {});
-        console.info(`${LIB_LOG} плейлист`, {
-            index: currentVideoIndex,
-            items: playlistContents.length,
-        });
     }
 
     const handleVideoEnded = async (isSecondVideo = false) => {
@@ -429,23 +371,8 @@
             const canShowWidgetSlide =
                 libraryWidgetHasVisual || isFetchingLibraryWidget;
             if (!canShowWidgetSlide) {
-                console.warn(
-                    `${LIB_LOG} слот виджета пропущен: нет данных для показа (часто 403 на GET /widgets/… для роли дашборда — нужен доступ на бэке). Плейлист без паузы на чёрный экран.`,
-                    {
-                        currentVideoIndex,
-                        hasResolved: Boolean(resolvedLibraryWidget),
-                        hasVisual: libraryWidgetHasVisual,
-                        fetching: isFetchingLibraryWidget,
-                    },
-                );
                 // не переходим в library — ниже сработает обычное переключение ролика
             } else {
-                console.info(`${LIB_LOG} ролик плейлиста закончился → фаза library`, {
-                    currentVideoIndex,
-                    hasResolved: Boolean(resolvedLibraryWidget),
-                    hasVisual: libraryWidgetHasVisual,
-                    fetching: isFetchingLibraryWidget,
-                });
                 videoElement?.pause();
                 libraryPlaybackPhase = "library";
                 await tick();
@@ -856,7 +783,6 @@
 
     $effect(() => {
         if (!libraryInterleaveActive) {
-            console.info(`${LIB_LOG} fetch effect: interleave выкл — сброс состояния`);
             libraryPlaybackPhase = "playlist";
             resolvedLibraryWidget = null;
             revokeLibraryWidgetBlob();
@@ -865,10 +791,6 @@
         }
         const wid = libraryWidgetUuid;
         if (!$isReady || !wid) {
-            console.info(`${LIB_LOG} fetch effect: ждём API или нет UUID`, {
-                isReady: $isReady,
-                wid,
-            });
             resolvedLibraryWidget = null;
             revokeLibraryWidgetBlob();
             return;
@@ -876,33 +798,22 @@
 
         let cancelled = false;
         isFetchingLibraryWidget = true;
-        console.info(`${LIB_LOG} fetch effect: старт загрузки виджета`, { wid });
         (async () => {
             try {
                 const resolved = await widgetService.resolveForPlayback(wid);
                 if (cancelled) {
-                    console.info(`${LIB_LOG} fetch: отменено (размонт/смена UUID)`);
                     return;
                 }
                 resolvedLibraryWidget = resolved;
                 if (resolved.fileUUID) {
-                    await loadLibraryWidgetAsset(resolved.fileUUID);
+                    await loadLibraryWidgetAsset(
+                        resolved.fileUUID,
+                        resolved.fileType,
+                    );
                 } else {
-                    console.info(`${LIB_LOG} нет fileUUID у виджета — только HTML или пусто`);
                     revokeLibraryWidgetBlob();
                 }
-                console.info(`${LIB_LOG} fetch effect: готово`, {
-                    hasVisual:
-                        resolved.html.length > 0 ||
-                        Boolean(resolved.fileUUID),
-                });
-            } catch (e) {
-                console.error(`${LIB_LOG} виджет API ошибка`, e);
-                if (e instanceof ApiError && e.code === 403) {
-                    console.warn(
-                        `${LIB_LOG} 403: токен дашборда не имеет права на /widgets/{uuid}. Разрешите GET /widgets/** для устройства или отдавайте данные виджета в ответе published solution.`,
-                    );
-                }
+            } catch {
                 if (!cancelled) {
                     resolvedLibraryWidget = null;
                     revokeLibraryWidgetBlob();
@@ -923,7 +834,6 @@
         if (playlistContents.length > 0) return;
         if (libraryPlaybackPhase !== "playlist") return;
         if (isFetchingLibraryWidget) return;
-        console.info(`${LIB_LOG} solo: только виджет, без роликов плейлиста`);
         libraryPlaybackPhase = "library";
         void (async () => {
             await tick();
@@ -943,9 +853,7 @@
             Boolean(libraryWidgetBlobUrl);
         if (hasVideoBg) return;
         const ms = Math.max(1, r.durationSec) * 1000;
-        console.info(`${LIB_LOG} таймер слайда (html/картинка)`, { ms });
         const id = window.setTimeout(() => {
-            console.info(`${LIB_LOG} таймер слайда истёк`);
             void finishLibrarySlideAndGoToPlaylist();
         }, ms);
         return () => clearTimeout(id);
@@ -958,14 +866,8 @@
         if (libraryWidgetHasVisual || isFetchingLibraryWidget) return;
         if (playlistContents.length === 0) {
             libraryPlaybackPhase = "playlist";
-            console.warn(
-                `${LIB_LOG} recovery: library без контента, плейлист пуст — сброс фазы`,
-            );
             return;
         }
-        console.warn(
-            `${LIB_LOG} recovery: фаза library без контента → возврат к плейлисту (тот же индекс)`,
-        );
         libraryPlaybackPhase = "playlist";
         void tick();
         videoElement?.play().catch(() => {});

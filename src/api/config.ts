@@ -30,8 +30,6 @@ export const API_CONFIG = {
                 `${API_BASE_V1_URL}/files/${fileUUID}/redirect`,
         },
         widgets: {
-            getByUUID: (widgetUUID: string) =>
-                `${API_BASE_V1_URL}/widgets/${widgetUUID}`,
             getViewByUUID: (widgetUUID: string) =>
                 `${API_BASE_V1_URL}/widgets/${widgetUUID}/view`,
         },

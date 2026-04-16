@@ -18,7 +18,7 @@ export function isStaticWidgetBlock(b: Block): boolean {
 }
 
 /**
- * UUID инстанса виджета из конструктора для GET /widgets/...
+ * UUID инстанса виджета из конструктора для GET .../widgets/{uuid}/view
  * — при code === null / пусто API кладёт идентификатор в uuid или payload.widgetUUID
  * — code как UUID тоже допускаем (некоторые сборки)
  */
