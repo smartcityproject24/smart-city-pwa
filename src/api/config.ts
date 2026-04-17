@@ -1,4 +1,4 @@
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://rgb.kg:17021";
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://rgb.kg:16021";
 const API_BASE_V1_URL = `${BASE_URL}/smart-city/api/v1`;
 
 export const API_CONFIG = {
@@ -9,14 +9,29 @@ export const API_CONFIG = {
             refresh: `${API_BASE_V1_URL}/auth/refresh`,
         },
         dashboards: {
-            getSolution: (solutionUUID: string) => `${API_BASE_V1_URL}/dashboards/${solutionUUID}/solutions`,
+            getSolution: (solutionUUID: string) =>
+                `${API_BASE_V1_URL}/dashboards/${solutionUUID}/solutions`,
             createLog: (dashboardUUID: string) => `${API_BASE_V1_URL}/dashboards/${dashboardUUID}/logs`,
+            getSettings: (dashboardUUID: string) =>
+                `${API_BASE_V1_URL}/dashboards/${dashboardUUID}/settings`,
+            getManifest: (dashboardUUID: string) =>
+                `${API_BASE_V1_URL}/dashboards/${dashboardUUID}/manifest`,
         },
         playlists: {
-            getPlaylist: (playlistUUID: string) => `${API_BASE_V1_URL}/playlists/${playlistUUID}/contents/sort`,
+            getPlaylist: (playlistUUID: string) =>
+                `${API_BASE_V1_URL}/playlists/${playlistUUID}/contents/sort`,
+            getManifest: (playlistUUID: string) =>
+                `${API_BASE_V1_URL}/playlists/${playlistUUID}/manifest`,
         },
         files: {
-            getFile: (fileUUID: string) => `${API_BASE_V1_URL}/files/${fileUUID}/dashboard`,
+            getFile: (fileUUID: string) =>
+                `${API_BASE_V1_URL}/files/${fileUUID}/dashboard`,
+            getFileRedirect: (fileUUID: string) =>
+                `${API_BASE_V1_URL}/files/${fileUUID}/redirect`,
+        },
+        widgets: {
+            getViewByUUID: (widgetUUID: string) =>
+                `${API_BASE_V1_URL}/widgets/${widgetUUID}/view`,
         },
     },
 } as const;

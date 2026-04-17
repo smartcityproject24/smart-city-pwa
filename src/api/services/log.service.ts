@@ -15,17 +15,17 @@ export const logService = {
     async createLog(
         dashboardUUID: string,
         logData: CreateDashboardLogRequest
-    ): Promise<CreateDashboardLogResponse> {        
+    ): Promise<CreateDashboardLogResponse> {
         // Заглушка - возвращаем успешный ответ без отправки
-        // return Promise.resolve({
-        //     success: true,
-        // });
-        
-        const url = API_CONFIG.endpoints.dashboards.createLog(dashboardUUID);
-        return apiRequest<CreateDashboardLogResponse>(url, {
-            method: "POST",
-            body: JSON.stringify(logData),
-        });
+        //return Promise.resolve({
+        //    success: true,
+        //});
+
+         const url = API_CONFIG.endpoints.dashboards.createLog(dashboardUUID);
+         return apiRequest<CreateDashboardLogResponse>(url, {
+             method: "POST",
+             body: JSON.stringify(logData),
+         });
     },
 };
 

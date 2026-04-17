@@ -43,6 +43,14 @@ export type LoggingContext = {
             dashboardUUID: string,
             data: VideoErrorLogData,
         ) => Promise<void>;
+        logWidgetStart: (
+            dashboardUUID: string,
+            data: {
+                widgetType: string;
+                screenUUID?: string;
+                timestamp?: string;
+            },
+        ) => Promise<void>;
         sendAllPendingLogs: () => Promise<{ success: number; failed: number }>;
         cleanupSentLogs: () => Promise<number>;
     };

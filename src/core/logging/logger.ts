@@ -52,6 +52,7 @@ export const logger = {
                 dashboardUUID,
                 data: {
                     logEventType: DashboardLogEventType.LOGIN,
+                    logEventTime: timestamp,
                     logPayload,
                 },
             });
@@ -95,6 +96,7 @@ export const logger = {
                     contentUUID: null,
                     fileUUID: data.fileUUID,
                     logContentShowDate,
+                    logEventTime: timestamp,
                     logPayload,
                     screenUUID: data.screenUUID,
                 },
@@ -131,6 +133,7 @@ export const logger = {
                 dashboardUUID,
                 data: {
                     logEventType: DashboardLogEventType.VIDEO_ERROR,
+                    logEventTime: timestamp,
                     fileUUID: data.fileUUID,
                     logPayload,
                     screenUUID: data.screenUUID,
@@ -142,6 +145,45 @@ export const logger = {
             }
         } catch (error) {
             console.error("[Logger] Failed to log video error:", error);
+        }
+    },
+
+    /**
+     * Логирует начало показа виджета
+     */
+    async logWidgetStart(
+        dashboardUUID: string,
+        data: {
+            widgetType: string;
+            screenUUID?: string;
+            timestamp?: string;
+        },
+    ): Promise<void> {
+        try {
+            const timestamp = data.timestamp || new Date().toISOString();
+            const logPayload = JSON.stringify({
+                widgetType: data.widgetType,
+                screenUUID: data.screenUUID,
+                timestamp,
+            });
+
+            await saveLog({
+                type: DashboardLogEventType.WIDGET_START,
+                timestamp,
+                dashboardUUID,
+                data: {
+                    logEventType: DashboardLogEventType.WIDGET_START,
+                    logEventTime: timestamp,
+                    logPayload,
+                    screenUUID: data.screenUUID,
+                },
+            });
+
+            if (isOnline()) {
+                await sendPendingLogs();
+            }
+        } catch (error) {
+            console.error("[Logger] Failed to log widget start:", error);
         }
     },
 

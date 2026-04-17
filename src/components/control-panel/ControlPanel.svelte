@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { getContext } from "svelte";
+    import { getContext, onMount, onDestroy } from "svelte";
     import type {
         AuthContext,
         UserContext,
@@ -12,9 +12,15 @@
     import { slide } from "@/utils/transitions";
     import { SelectLanguage } from "@components/select-language";
     import ControlPanelButton from "./ControlPanelButton.svelte";
-    import { X } from "lucide-svelte";
+    import { X, Maximize2, Minimize2 } from "lucide-svelte";
     import { PWAInstall } from "@components/ui/pwa-install";
     import { toFormatTimeWithSeconds } from "@/utils/date-time-conveter";
+    import {
+        toggleFullscreen,
+        isFullscreen,
+        onFullscreenChange,
+        isFullscreenSupported,
+    } from "@core/pwa";
 
     const { translate } = getContext<LanguageContext>("language");
     const { clearTokens, access } = getContext<AuthContext>("auth");
@@ -32,8 +38,29 @@
     const { logger } = getContext<LoggingContext>("logging");
 
     let isOpen = $state(false);
+    let isFullscreenActive = $state(false);
+    let unsubscribeFullscreen: (() => void) | null = null;
 
     const onTogglePanel = () => (isOpen = !isOpen);
+
+    const handleToggleFullscreen = async () => {
+        try {
+            await toggleFullscreen();
+        } catch (e) {
+            console.warn("[ControlPanel] fullscreen toggle failed:", e);
+        }
+    };
+
+    onMount(() => {
+        isFullscreenActive = isFullscreen();
+        unsubscribeFullscreen = onFullscreenChange((active) => {
+            isFullscreenActive = active;
+        });
+    });
+
+    onDestroy(() => {
+        unsubscribeFullscreen?.();
+    });
 
     const schedulesWithActivity = $derived.by(() => {
         if (!$scheduleSettings || $scheduleSettings.length === 0) return [];
@@ -91,13 +118,33 @@
     <div class="control-panel" transition:slide={{ duration: 300 }}>
         <div class="panel-header">
             <h2>{$translate("control_panel")}</h2>
-            <button
-                class="close-button"
-                onclick={onTogglePanel}
-                aria-label="Close panel"
-            >
-                <X size={24} />
-            </button>
+            <div class="panel-header-actions">
+                {#if isFullscreenSupported()}
+                    <button
+                        class="icon-button fullscreen-button"
+                        onclick={handleToggleFullscreen}
+                        aria-label={isFullscreenActive
+                            ? $translate("fullscreen_exit")
+                            : $translate("fullscreen_enter")}
+                        title={isFullscreenActive
+                            ? $translate("fullscreen_exit")
+                            : $translate("fullscreen_enter")}
+                    >
+                        {#if isFullscreenActive}
+                            <Minimize2 size={20} />
+                        {:else}
+                            <Maximize2 size={20} />
+                        {/if}
+                    </button>
+                {/if}
+                <button
+                    class="icon-button close-button"
+                    onclick={onTogglePanel}
+                    aria-label="Close panel"
+                >
+                    <X size={20} />
+                </button>
+            </div>
         </div>
         <div class="panel-content">
             <div class="control-section">
@@ -208,13 +255,17 @@
                                             <span>
                                                 {$translate("start")}:
                                             </span>
-                                            {toFormatTimeWithSeconds(schedule.startDateTime)}
+                                            {toFormatTimeWithSeconds(
+                                                schedule.startDateTime,
+                                            )}
                                         </p>
                                         <p>
                                             <span>
                                                 {$translate("end")}:
                                             </span>
-                                            {toFormatTimeWithSeconds(schedule.endDateTime)}
+                                            {toFormatTimeWithSeconds(
+                                                schedule.endDateTime,
+                                            )}
                                         </p>
                                     </div>
                                 </div>
@@ -276,9 +327,6 @@
         align-items: center;
         padding: clamp(16px, 1.5vw, 24px);
         border-bottom: 1px solid colors.$color-border;
-        // background-color: rgba(29, 29, 29, 0.9);
-        // backdrop-filter: blur(clamp(8px, 1vw, 12px));
-        // -webkit-backdrop-filter: blur(clamp(8px, 1vw, 12px));
 
         h2 {
             @include typo.large-screen-medium;
@@ -289,27 +337,45 @@
         }
     }
 
-    .close-button {
+    .panel-header-actions {
+        display: flex;
+        align-items: center;
+        gap: clamp(4px, 0.5vw, 8px);
+        flex-shrink: 0;
+    }
+
+    .icon-button {
         background: none;
         border: none;
-        @include typo.medium-text;
         cursor: pointer;
         color: colors.$color-text-secondary;
-        padding: 0;
+        padding: clamp(4px, 0.5vw, 6px);
         width: clamp(28px, 3vw, 36px);
         height: clamp(28px, 3vw, 36px);
         display: flex;
         align-items: center;
         justify-content: center;
-        transition: color 120ms ease;
+        border-radius: clamp(4px, 0.5vw, 6px);
+        transition:
+            color 120ms ease,
+            background-color 120ms ease;
 
         &:hover {
             color: colors.$color-text-primary;
+            background-color: colors.$color-background-tertiary;
         }
 
         :global(svg) {
-            width: 100%;
-            height: 100%;
+            width: clamp(16px, 2vw, 20px);
+            height: clamp(16px, 2vw, 20px);
+            flex-shrink: 0;
+        }
+    }
+
+    .fullscreen-button {
+        &:hover {
+            color: colors.$color-primary;
+            background-color: rgba(colors.$color-primary, 0.1);
         }
     }
 

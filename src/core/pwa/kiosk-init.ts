@@ -4,13 +4,14 @@
  */
 
 import { isStandalone } from './platform-detection';
-import { requestFullscreen, startFullscreenKeeper } from './fullscreen';
+import { requestFullscreen, startFullscreenKeeper, getFullscreenPreferred, setFullscreenPreferred } from './fullscreen';
 import type { KioskInitConfig } from './types';
 
 const DEFAULT_CONFIG: Required<KioskInitConfig> = {
 	autoFullscreen: true,
 	forceFullscreenOnAndroid: true,
 	fullscreenReturnDelay: 1500,
+	fullscreenInBrowser: true,
 };
 
 /**
@@ -27,7 +28,10 @@ export function initKioskMode(config: KioskInitConfig = {}): () => void {
 	const finalConfig = { ...DEFAULT_CONFIG, ...config };
 	const cleanupFunctions: Array<() => void> = [];
 
-	if (finalConfig.autoFullscreen && isStandalone()) {
+	const shouldFullscreen = finalConfig.autoFullscreen && (
+		isStandalone() || finalConfig.fullscreenInBrowser
+	);
+	if (shouldFullscreen) {
 		const cleanup = initAutoFullscreen(
 			finalConfig.forceFullscreenOnAndroid,
 			finalConfig.fullscreenReturnDelay
@@ -41,41 +45,51 @@ export function initKioskMode(config: KioskInitConfig = {}): () => void {
 }
 
 /**
- * Инициализирует автоматический fullscreen при запуске в standalone режиме
- * 
+ * Инициализирует автоматический fullscreen при запуске (standalone или по ссылке в браузере).
+ *
  * @param forceOnAndroid - Принудительно возвращать fullscreen на Android
  * @param returnDelay - Задержка перед возвратом в fullscreen (мс)
- * @returns Функция для очистки
  */
 function initAutoFullscreen(
 	forceOnAndroid: boolean,
 	returnDelay: number
 ): () => void {
 	let fullscreenRequested = false;
-	let userInteracted = false;
 
-	const requestFullscreenAfterInteraction = async (): Promise<void> => {
-		if (fullscreenRequested || !isStandalone()) {
-			return;
+	const tryRequestFullscreen = async (): Promise<boolean> => {
+		if (fullscreenRequested) {
+			return true;
 		}
-
 		try {
 			await requestFullscreen();
 			fullscreenRequested = true;
+			setFullscreenPreferred(true);
+			return true;
 		} catch (error) {
 			console.warn('[initKioskMode] Не удалось запросить fullscreen:', error);
+			return false;
 		}
 	};
+
+	// Если до перезагрузки был fullscreen — пробуем включить сразу (иногда браузер разрешает после восстановления вкладки)
+	if (getFullscreenPreferred()) {
+		void tryRequestFullscreen();
+	}
+
+	requestAnimationFrame(() => {
+		void tryRequestFullscreen().then((ok) => {
+			if (!ok) {
+				setTimeout(() => void tryRequestFullscreen(), 300);
+			}
+		});
+	});
 
 	const handleFirstInteraction = (): void => {
-		if (!userInteracted) {
-			userInteracted = true;
-			requestFullscreenAfterInteraction();
+		if (!fullscreenRequested) {
+			void tryRequestFullscreen();
 		}
 	};
-
 	const interactionEvents: Array<keyof DocumentEventMap> = ['click', 'touchstart', 'keydown'];
-
 	interactionEvents.forEach(eventType => {
 		document.addEventListener(eventType, handleFirstInteraction, { once: true });
 	});
