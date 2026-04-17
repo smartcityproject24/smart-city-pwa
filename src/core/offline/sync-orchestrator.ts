@@ -26,6 +26,17 @@ import {
     type ManifestItem,
 } from "./manifest.service";
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+/**
+ * A file that fails this many times in a row is skipped until the server
+ * updates it (new checksum in the manifest). Prevents one broken file from
+ * blocking the whole sync cycle indefinitely.
+ */
+const MAX_FILE_RETRIES = 3;
+
+const SYNC_CHANNEL = "offline-sync";
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type SyncSkipReason =
@@ -36,10 +47,8 @@ export type SyncSkipReason =
 
 export type SyncResult =
     | { type: "skipped"; reason: SyncSkipReason }
-    | { type: "completed"; newVersion: number; downloadedCount: number }
+    | { type: "completed"; newVersion: number; downloadedCount: number; skippedCount: number }
     | { type: "failed"; error: Error };
-
-const SYNC_CHANNEL = "offline-sync";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -51,10 +60,19 @@ function toPlaylistItem(item: ManifestItem): PlaylistItem {
     };
 }
 
+/**
+ * Download a single file, verify SHA-256, and commit .tmp → .mp4.
+ *
+ * - On success: status = "ready", retryCount reset to 0.
+ * - On failure: status = "corrupt", retryCount incremented. Always rethrows
+ *   so the caller can decide to skip or abort.
+ */
 async function downloadAndVerify(
     item: ManifestItem,
     existingRecord: VideoRecord | undefined
 ): Promise<void> {
+    const retryCount = existingRecord?.retryCount ?? 0;
+
     await putVideoRecord({
         id: item.uuid,
         filename: item.filename,
@@ -62,26 +80,42 @@ async function downloadAndVerify(
         checksumSHA256: item.checksumSha256,
         durationSeconds: item.durationSeconds,
         status: "downloading",
-        ...(existingRecord?.downloadedAt
-            ? { downloadedAt: existingRecord.downloadedAt }
-            : {}),
+        retryCount,
+        ...(existingRecord?.downloadedAt ? { downloadedAt: existingRecord.downloadedAt } : {}),
     });
 
-    // Stream download directly into OPFS as .tmp
-    const response = await apiRequestRaw(item.url);
-    if (!response.ok || !response.body) {
-        throw new Error(
-            `Download failed for ${item.uuid}: ${response.status} ${response.statusText}`
-        );
-    }
-    await writeTmpFile(item.uuid, response.body);
+    try {
+        const response = await apiRequestRaw(item.url);
+        if (!response.ok || !response.body) {
+            throw new Error(
+                `Download failed for ${item.uuid}: ${response.status} ${response.statusText}`
+            );
+        }
+        await writeTmpFile(item.uuid, response.body);
 
-    // Verify SHA-256 before committing
-    const tmpFile = await getTmpFile(item.uuid);
-    const computed = await computeSHA256FromFile(tmpFile);
+        const tmpFile = await getTmpFile(item.uuid);
+        const computed = await computeSHA256FromFile(tmpFile);
 
-    if (!verifyChecksum(computed, item.checksumSha256)) {
-        await deleteTmpFile(item.uuid);
+        if (!verifyChecksum(computed, item.checksumSha256)) {
+            await deleteTmpFile(item.uuid);
+            throw new Error(
+                `Checksum mismatch for ${item.uuid}: got ${computed}, expected ${item.checksumSha256}`
+            );
+        }
+
+        await commitTmpToMp4(item.uuid);
+        await putVideoRecord({
+            id: item.uuid,
+            filename: item.filename,
+            sizeBytes: item.sizeBytes,
+            checksumSHA256: item.checksumSha256,
+            durationSeconds: item.durationSeconds,
+            status: "ready",
+            retryCount: 0,
+            downloadedAt: Date.now(),
+        });
+    } catch (err) {
+        // Increment retryCount so persistently broken files eventually get skipped
         await putVideoRecord({
             id: item.uuid,
             filename: item.filename,
@@ -89,23 +123,10 @@ async function downloadAndVerify(
             checksumSHA256: item.checksumSha256,
             durationSeconds: item.durationSeconds,
             status: "corrupt",
+            retryCount: retryCount + 1,
         });
-        throw new Error(
-            `Checksum mismatch for ${item.uuid}: got ${computed}, expected ${item.checksumSha256}`
-        );
+        throw err;
     }
-
-    // Rename .tmp → .mp4 and mark ready
-    await commitTmpToMp4(item.uuid);
-    await putVideoRecord({
-        id: item.uuid,
-        filename: item.filename,
-        sizeBytes: item.sizeBytes,
-        checksumSHA256: item.checksumSha256,
-        durationSeconds: item.durationSeconds,
-        status: "ready",
-        downloadedAt: Date.now(),
-    });
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -130,10 +151,7 @@ export async function runSync(playlistUUID: string): Promise<SyncResult> {
         // 2. Fetch manifest (local version check → null if unchanged)
         let manifest;
         try {
-            manifest = await fetchManifest(
-                playlistUUID,
-                currentState.lastVersion
-            );
+            manifest = await fetchManifest(playlistUUID, currentState.lastVersion);
         } catch (err) {
             if (err instanceof ManifestNotFoundError) {
                 console.log("[Sync] Manifest endpoint not available — skipping");
@@ -155,36 +173,25 @@ export async function runSync(playlistUUID: string): Promise<SyncResult> {
 
         // 3. Diff: compare manifest items with local ready records
         const localRecords = await getAllVideoRecords();
+        const allLocalMap = new Map(localRecords.map(r => [r.id, r]));
         const localReady = new Map(
-            localRecords
-                .filter((r) => r.status === "ready")
-                .map((r) => [r.id, r])
+            localRecords.filter(r => r.status === "ready").map(r => [r.id, r])
         );
-        const manifestIds = new Set(manifest.items.map((i) => i.uuid));
+        const manifestIds = new Set(manifest.items.map(i => i.uuid));
 
-        const toDownload = manifest.items.filter((item) => {
+        const toDownload = manifest.items.filter(item => {
             const local = localReady.get(item.uuid);
-            return (
-                !local ||
-                !verifyChecksum(local.checksumSHA256, item.checksumSha256)
-            );
+            return !local || !verifyChecksum(local.checksumSHA256, item.checksumSha256);
         });
 
-        // Only delete files that were in THIS playlist's previous active items.
-        // Never touch files belonging to other playlists.
+        // Only delete files from THIS playlist's previous active items
         const existingRecord = await getPlaylist(playlistUUID);
-        const previousActiveIds = new Set(
-            (existingRecord?.items ?? []).map((i) => i.id)
-        );
-        const toDelete = [...previousActiveIds].filter(
-            (id) => !manifestIds.has(id)
-        );
+        const previousActiveIds = new Set((existingRecord?.items ?? []).map(i => i.id));
+        const toDelete = [...previousActiveIds].filter(id => !manifestIds.has(id));
 
-        console.log(
-            `[Sync] Download: ${toDownload.length}, Delete: ${toDelete.length}`
-        );
+        console.log(`[Sync] Download: ${toDownload.length}, Delete: ${toDelete.length}`);
 
-        // 4. Stage pending items in IDB (in-progress marker)
+        // 4. Stage pending playlist in IDB (crash recovery marker)
         await putPlaylist({
             playlistUUID,
             version: existingRecord?.version ?? 0,
@@ -194,26 +201,76 @@ export async function runSync(playlistUUID: string): Promise<SyncResult> {
             pendingStatus: "in_progress",
         });
 
-        // 5. Download new / changed files sequentially
+        // 5. Download files — per-file error handling, never abort the whole sync
+        let downloadedCount = 0;
+        const failedIds = new Set<string>();
+
         for (const item of toDownload) {
-            console.log(`[Sync] Downloading ${item.filename} (${item.uuid})`);
-            await downloadAndVerify(item, localReady.get(item.uuid));
+            const record = allLocalMap.get(item.uuid);
+            const retries = record?.retryCount ?? 0;
+
+            // Skip files that have repeatedly failed with the same checksum.
+            // If the server fixes the file (new checksum), verifyChecksum below
+            // will be false → file re-enters toDownload → retryCount resets on success.
+            if (retries >= MAX_FILE_RETRIES) {
+                const sameFile =
+                    record && verifyChecksum(record.checksumSHA256, item.checksumSha256);
+                if (sameFile) {
+                    console.warn(
+                        `[Sync] Skipping ${item.filename} — max retries (${retries}/${MAX_FILE_RETRIES}), same checksum`
+                    );
+                    failedIds.add(item.uuid);
+                    continue;
+                }
+                // Server updated the file — reset counter and retry
+                console.log(
+                    `[Sync] ${item.filename} has new checksum — resetting retry count`
+                );
+                await putVideoRecord({ ...record!, retryCount: 0 });
+            }
+
+            try {
+                console.log(`[Sync] Downloading ${item.filename} (${item.uuid})`);
+                await downloadAndVerify(item, record);
+                downloadedCount++;
+            } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                console.error(`[Sync] Failed to download ${item.filename}: ${msg}`);
+                failedIds.add(item.uuid);
+                // Continue with next file — one failure does not abort the sync
+            }
         }
 
-        // 6. Mark pending as ready_to_commit (crash recovery marker)
+        if (failedIds.size > 0) {
+            console.warn(
+                `[Sync] ${failedIds.size} file(s) failed — will retry next sync`
+            );
+        }
+
+        // 6. Build pending playlist from only ready items
+        // Failed / skipped files are excluded — player won't see them
+        const updatedRecords = await getAllVideoRecords();
+        const updatedReadyIds = new Set(
+            updatedRecords.filter(r => r.status === "ready").map(r => r.id)
+        );
+        const readyPendingItems = manifest.items
+            .filter(item => updatedReadyIds.has(item.uuid))
+            .map(toPlaylistItem);
+
+        // 7. Mark as ready_to_commit
         await putPlaylist({
             playlistUUID,
             version: existingRecord?.version ?? 0,
             items: existingRecord?.items ?? [],
-            pendingItems: manifest.items.map(toPlaylistItem),
+            pendingItems: readyPendingItems,
             pendingVersion: manifest.version,
             pendingStatus: "ready_to_commit",
         });
 
-        // 7. Atomic commit: pending items become active items
+        // 8. Atomic commit: pending items become active
         await commitPending(playlistUUID);
 
-        // 8. Signal player via BroadcastChannel
+        // 9. Signal player via BroadcastChannel
         const channel = new BroadcastChannel(SYNC_CHANNEL);
         channel.postMessage({
             type: "playlist-updated",
@@ -222,18 +279,18 @@ export async function runSync(playlistUUID: string): Promise<SyncResult> {
         });
         channel.close();
 
-        // 9. Delete orphan files no longer in the manifest
+        // 10. Delete obsolete files (use allLocalMap — handles corrupt/deleting records too)
         for (const id of toDelete) {
             console.log(`[Sync] Removing obsolete file ${id}`);
-            await putVideoRecord({
-                ...localReady.get(id)!,
-                status: "deleting",
-            });
+            const record = allLocalMap.get(id);
+            if (record) {
+                await putVideoRecord({ ...record, status: "deleting" });
+            }
             await deleteVideoFile(id);
             await deleteVideoRecord(id);
         }
 
-        // 10. Update sync state — success
+        // 11. Update sync state — success
         await putSyncState({
             playlistUUID,
             status: "idle",
@@ -245,14 +302,16 @@ export async function runSync(playlistUUID: string): Promise<SyncResult> {
         });
 
         console.log(
-            `[Sync] Completed. Version: ${manifest.version}, Downloaded: ${toDownload.length}`
+            `[Sync] Completed. Version: ${manifest.version}, Downloaded: ${downloadedCount}, Skipped: ${failedIds.size}`
         );
         return {
             type: "completed",
             newVersion: manifest.version,
-            downloadedCount: toDownload.length,
+            downloadedCount,
+            skippedCount: failedIds.size,
         };
     } catch (error) {
+        // Only catastrophic failures reach here (manifest fetch, IDB error, etc.)
         const err = error instanceof Error ? error : new Error(String(error));
         console.error("[Sync] Sync failed:", err.message);
 
@@ -262,7 +321,7 @@ export async function runSync(playlistUUID: string): Promise<SyncResult> {
             status: "error",
             failureReason: err.message,
             retryCount: latestState.retryCount + 1,
-            nextRetryAt: null, // scheduler will set this
+            nextRetryAt: null,
         });
 
         return { type: "failed", error: err };

@@ -13,6 +13,7 @@ export interface VideoRecord {
     durationSeconds: number;
     status: VideoStatus;
     downloadedAt?: number;
+    retryCount?: number;
 }
 
 export type PendingStatus = "in_progress" | "ready_to_commit";

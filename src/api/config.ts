@@ -29,5 +29,9 @@ export const API_CONFIG = {
             getFileRedirect: (fileUUID: string) =>
                 `${API_BASE_V1_URL}/files/${fileUUID}/redirect`,
         },
+        widgets: {
+            getViewByUUID: (widgetUUID: string) =>
+                `${API_BASE_V1_URL}/widgets/${widgetUUID}/view`,
+        },
     },
 } as const;
